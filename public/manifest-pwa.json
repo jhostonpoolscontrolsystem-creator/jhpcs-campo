@@ -1,0 +1,25 @@
+{
+  "name": "JHPCS Tratador • App do Piscineiro",
+  "short_name": "JHPCS Tratador",
+  "description": "Aplicativo Independente de Campo para Tratadores e Piscineiros JHoston Pools",
+  "start_url": "/pwa",
+  "scope": "/pwa",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#06b6d4",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
