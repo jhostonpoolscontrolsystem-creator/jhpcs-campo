@@ -20,7 +20,7 @@
     "idb": "^8.0.4",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.52.0",
-    "next": "16.4.0",
+    "next": "^16.4.5",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "tailwind-merge": "^3.7.0"
@@ -36,4 +36,3 @@
     "typescript": "^5"
   }
 }
-
