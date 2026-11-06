@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { MaintainerPwaWizard } from '@/components/MaintainerPwaWizard';
-import { Droplet, Smartphone, ShieldCheck, Download } from 'lucide-react';
+import { Droplet, Smartphone, ShieldCheck, Download, HelpCircle } from 'lucide-react';
 import Link from 'next/link';
 
 export default function CampoHomePage() {
@@ -78,15 +78,26 @@ export default function CampoHomePage() {
           </div>
         </div>
 
-        {!isStandalone && !installed && (
-          <button
-            onClick={handleInstallClick}
-            className="flex items-center gap-1 text-xs bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-2.5 py-1.5 rounded-lg transition-all animate-pulse"
+        <div className="flex items-center gap-2">
+          {!isStandalone && !installed && (
+            <button
+              onClick={handleInstallClick}
+              className="flex items-center gap-1 text-xs bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-2.5 py-1.5 rounded-lg transition-all animate-pulse"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Instalar</span>
+            </button>
+          )}
+
+          <Link
+            href="/ajuda"
+            className="flex items-center gap-1 text-xs bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700/60 px-2.5 py-1.5 rounded-lg transition-all"
+            title="Ajuda e Manual do Tratador"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>Instalar App</span>
-          </button>
-        )}
+            <HelpCircle className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Ajuda</span>
+          </Link>
+        </div>
       </div>
 
       {/* Wizard Principal do Tratador */}
@@ -98,13 +109,20 @@ export default function CampoHomePage() {
       <footer className="mt-8 pt-4 border-t border-slate-900 text-center text-xs text-slate-500 flex flex-col items-center gap-2">
         <div className="flex items-center gap-3">
           <Link
+            href="/ajuda"
+            className="text-cyan-400 hover:text-cyan-300 underline underline-offset-4 text-[11px] font-medium"
+          >
+            Manual & Dúvidas
+          </Link>
+          <span className="text-slate-700">•</span>
+          <Link
             href="/primeiro-acesso"
             className="text-cyan-400 hover:text-cyan-300 underline underline-offset-4 text-[11px]"
           >
-            Primeiro Acesso / Ativação de PIN
+            Ativação de PIN
           </Link>
           <span className="text-slate-700">•</span>
-          <span className="text-[11px] text-slate-500">v1.0 (PWA Offline First)</span>
+          <span className="text-[11px] text-slate-500">v1.0 Offline First</span>
         </div>
         <p className="text-[10px] text-slate-600">
           JHoston Pools Control System • Modo Campo

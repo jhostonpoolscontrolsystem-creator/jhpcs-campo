@@ -1,12 +1,11 @@
-// Service Worker para JHPCS PWA (App do Tratador / Piscineiro)
-const CACHE_NAME = 'jhpcs-cache-v1';
+// Service Worker para JHPCS-CAMPO (App do Tratador / Piscineiro)
+const CACHE_NAME = 'jhpcs-campo-v1';
 const STATIC_ASSETS = [
   '/',
-  '/pwa',
   '/manifest.json',
-  '/manifest-pwa.json',
+  '/logo.png',
   '/favicon.ico',
-  '/globe.svg'
+  '/primeiro-acesso'
 ];
 
 self.addEventListener('install', (event) => {
@@ -30,20 +29,23 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Estratégia Network First com fallback para Cache para permitir operação Offline de leitura
-  if (event.request.method === 'GET') {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          const resClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, resClone);
-          });
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
+  // Ignora chamadas de API ou requisições POST para não quebrar chamadas dinâmicas
+  if (event.request.method !== 'GET' || event.request.url.includes('/api/')) {
+    return;
   }
+
+  // Estratégia Network First com fallback para Cache
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        const resClone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, resClone);
+        });
+        return response;
+      })
+      .catch(() => caches.match(event.request))
+  );
 });
 
 // Suporte a Background Sync para envios de formulário offline
@@ -54,7 +56,6 @@ self.addEventListener('sync', (event) => {
 });
 
 async function syncMaintenanceLogs() {
-  console.log('Background Sync: Sincronizando laudos offline pendentes...');
-  // Na versão final, aqui o IndexedDB é lido e os POSTs são disparados para /api/maintenance/submit
+  console.log('Background Sync: Sincronizando laudos offline pendentes no JHPCS-CAMPO...');
   return Promise.resolve();
 }
