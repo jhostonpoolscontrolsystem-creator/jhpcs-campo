@@ -36,6 +36,35 @@ export const PH_SPECTRAL_SCALE: ColorCalibrationPoint[] = [
   { val: 8.4, rgb: { r: 131, g: 24, b: 67 }, hex: '#831843' },
 ];
 
+// =========================================================================
+// ESCALA ESPECTRAL PARA ESTOJO COMPARADOR / TUBOS DE ENSAIO (CUBETA LÍQUIDA)
+// Reagentes líquidos: Vermelho de Fenol (pH líquido) e Ortotolidina / DPD líquido (Cloro)
+// O tubo possui volume líquido translúcido com dispersão cilíndrica de luz
+// =========================================================================
+
+// Tubo de Ensaio pH Líquido (Vermelho de Fenol Líquido em Cubeta)
+export const TUBE_PH_SPECTRAL_SCALE: ColorCalibrationPoint[] = [
+  { val: 6.8, rgb: { r: 254, g: 240, b: 138 }, hex: '#fef08a' }, // Amarelo brilhante
+  { val: 7.0, rgb: { r: 253, g: 224, b: 71 }, hex: '#fde047' },  // Amarelo quente
+  { val: 7.2, rgb: { r: 251, g: 146, b: 60 }, hex: '#fb923c' },  // Laranja suave
+  { val: 7.4, rgb: { r: 248, g: 113, b: 113 }, hex: '#f87171' }, // Vermelho coral ideal
+  { val: 7.6, rgb: { r: 239, g: 68, b: 68 }, hex: '#ef4444' },   // Vermelho vivo
+  { val: 7.8, rgb: { r: 225, g: 29, b: 72 }, hex: '#e11d48' },   // Vermelho escuro
+  { val: 8.2, rgb: { r: 190, g: 24, b: 93 }, hex: '#be185d' },   // Magenta / Púrpura
+];
+
+// Tubo de Ensaio Cloro Livre Líquido (Ortotolidina / DPD Líquido em Cubeta)
+// 0.5 (Amarelo bem claro / Palha) -> 1.0 (Amarelo) -> 2.0 (Amarelo Ouro) -> 3.0 (Âmbar) -> 5.0 (Laranja escuro)
+export const TUBE_CL_SPECTRAL_SCALE: ColorCalibrationPoint[] = [
+  { val: 0.0, rgb: { r: 248, g: 250, b: 252 }, hex: '#f8fafc' }, // Incolor / Água
+  { val: 0.5, rgb: { r: 254, g: 249, b: 195 }, hex: '#fef9c3' }, // Amarelo pálido
+  { val: 1.0, rgb: { r: 253, g: 224, b: 71 }, hex: '#fde047' },  // Amarelo límpido
+  { val: 1.5, rgb: { r: 250, g: 204, b: 21 }, hex: '#facc15' },  // Amarelo ouro
+  { val: 2.0, rgb: { r: 234, g: 179, b: 8 }, hex: '#eab308' },   // Ouro intenso
+  { val: 3.0, rgb: { r: 217, g: 119, b: 6 }, hex: '#d97706' },   // Âmbar
+  { val: 5.0, rgb: { r: 180, g: 83, b: 9 }, hex: '#b45309' },    // Castanho / Marrom
+];
+
 // Escala de Cloro Livre DPD (ppm)
 // 0.0 (Branco/Translúcido) -> 1.0 (Rosa claro) -> 2.0 (Rosa/Magenta) -> 3.0 (Magenta intenso) -> 5.0 (Púrpura escuro)
 export const CL_SPECTRAL_SCALE: ColorCalibrationPoint[] = [

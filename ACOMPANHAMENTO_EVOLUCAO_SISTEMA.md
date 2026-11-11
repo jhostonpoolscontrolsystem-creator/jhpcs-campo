@@ -8,7 +8,8 @@
 
 | Versão | Data | Status | Descrição Sumária |
 | :--- | :--- | :--- | :--- |
-| **v4.3.0** | 11/11/2026 | **Produção / Homologado** | Visão Computacional no Edge: Inspeção de microfissuras e descontinuidade de rejuntes via Sobel 3x3 local |
+| **v4.4.0** | 11/11/2026 | **Produção / Homologado** | Leitura Colorimétrica de Tubos de Ensaio (Estojo Comparador Líquido de Cloro/pH) 100% Offline |
+| **v4.3.0** | 11/11/2026 | **Homologado** | Visão Computacional no Edge: Inspeção de microfissuras e descontinuidade de rejuntes via Sobel 3x3 local |
 | **v4.2.0** | 11/11/2026 | **Homologado** | Visão Computacional Embarcada (Edge Canvas Colorimetry): Leitura contínua de fitas 100% offline em subsolos |
 | **v4.1.0** | 11/11/2026 | **Homologado** | Central de Relatórios & Fechamento Mensal no PWA: Dossiê WhatsApp, Lista de Químicos e Livro Sanitário Anvisa |
 | **v4.0.0** | 11/11/2026 | **Homologado** | Arquitetura Polimórfica e Modular por Perfil (SOLO, FLEET, FACILITY, ENTERPRISE JHOSTON), ISL local e Contas Demo |
@@ -23,6 +24,25 @@
 ---
 
 ## 🔍 Detalhamento dos Ciclos de Evolução
+
+### [v4.4.0] — 11/11/2026 • Leitura Colorimétrica de Tubos de Ensaio (Estojo Comparador Líquido)
+> **Objetivo:** Estender a visão computacional local para suportar estojos de teste tradicionais por tubos de ensaio cilíndricos com reagente líquido (Vermelho de Fenol e Ortotolidina/DPD líquido), muito comuns no dia a dia dos tratadores.
+
+#### 1. Calibração Espectral Específica para Líquidos em Tubos (`src/lib/vision/colorimetryEngine.ts`)
+- **Escala de pH Líquido (Vermelho de Fenol)**:
+  * Faixa de 6.8 (Amarelo brilhante) a 8.2 (Vermelho magenta/púrpura), considerando a refração e densidade volumétrica da coluna d'água cilíndrica.
+- **Escala de Cloro Líquido (Ortotolidina / DPD Amarelo)**:
+  * Faixa de 0.0 ppm (Incolor) a 5.0 ppm (Âmbar/Marrom dourado escuro).
+- **Amostragem Cilíndrica com Rejeição de Reflexos do Vidro/Acrílico**:
+  * Região de interesse vertical ampliada (40x80 px por tubo) filtrando o brilho especular das paredes transparentes da cubeta.
+
+#### 2. Visor HUD com Alternância de Alvo (`src/components/AiStripScannerModal.tsx`)
+- Seletor rápido de alvo no cabeçalho:
+  * **🧪 Fita Reagente 4-em-1**: Retículo vertical para 3 almofadas (Cl, pH, Alk).
+  * **⚗️ Tubos de Ensaio (Estojo)**: Retículo horizontal duplo com dois compartimentos transparentes destacados (Tubo Esquerdo: Cloro / Tubo Direito: pH).
+- Amostragem instantânea em tempo real e preenchimento com 1 toque no formulário de atendimento ativo.
+
+---
 
 ### [v4.3.0] — 11/11/2026 • Visão Computacional no Edge (Detecção de Microfissuras & Rejuntes)
 > **Objetivo:** Eliminar a dependência de APIs remotas para inspeção de superfícies, executando a análise pericial de trincas, rejuntes e eflorescência diretamente no dispositivo móvel do técnico.

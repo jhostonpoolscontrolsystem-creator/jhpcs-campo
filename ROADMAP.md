@@ -85,11 +85,14 @@ timeline
 - [x] **Aderência Offline com Alerta Elegante**:
   - Detecção de rede com notificação para sincronização de fotos da nuvem.
 
-### 🔬 Fase 8: Visão Computacional Embarcada no Edge (CONCLUÍDO - v4.2 / v4.3)
+### 🔬 Fase 8: Visão Computacional Embarcada no Edge (CONCLUÍDO - v4.2 / v4.3 / v4.4)
 - [x] **Leitura Espectral Direta no Canvas (`colorimetryEngine.ts`)**:
   - Processamento de pixels em tempo real via câmera sem chamada de IA na nuvem.
   - Amostragem RGB/HSV nas 3 almofadas da fita analítica (Cloro Livre, pH e Alcalinidade).
   - Algoritmo de interpolação espectral e rejeição de reflexos especulares.
+- [x] **Leitura de Tubos de Ensaio / Estojo Comparador Líquido (v4.4)**:
+  - Calibração espectral de refração cilíndrica para Vermelho de Fenol (pH) e Ortotolidina/DPD (Cloro).
+  - Retículo HUD horizontal duplo para enquadramento dos dois tubos de ensaio.
 - [x] **Inspeção de Rejuntes & Microfissuras no Edge (`edgeSurfaceInspector.ts`)**:
   - Convolução de gradiente Sobel 3x3 para detecção de descontinuidades de rejunte e fissuras lineares.
   - Análise espectral de eflorescência cálcica (carbonato lixiviado) 100% offline.

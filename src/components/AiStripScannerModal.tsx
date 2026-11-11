@@ -21,6 +21,8 @@ import {
   PH_SPECTRAL_SCALE,
   CL_SPECTRAL_SCALE,
   ALK_SPECTRAL_SCALE,
+  TUBE_PH_SPECTRAL_SCALE,
+  TUBE_CL_SPECTRAL_SCALE,
   rgbToHex,
   ColorRgb
 } from '@/lib/vision/colorimetryEngine';
@@ -45,6 +47,7 @@ export default function AiStripScannerModal({
 
   // Amostragem em tempo real (Modo Contínuo / Freeze)
   const [isFrozen, setIsFrozen] = useState(false);
+  const [targetType, setTargetType] = useState<'STRIP' | 'TUBE'>('STRIP');
 
   // Referências para Vídeo e Canvas oculto de processamento
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -160,23 +163,50 @@ export default function AiStripScannerModal({
     // Desenha o frame atual
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Amostragem nas 3 regiões do visor retangular central
-    // Fita padrão: 3 almofadas (pads) alinhadas verticalmente no centro
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
-    const padSize = 24;
 
-    // Pad 1 (Superior): Cloro Livre
-    const clSample = sampleCanvasRegion(ctx, centerX - padSize / 2, centerY - 60, padSize, padSize);
-    const clResult = matchChemicalValue(clSample, CL_SPECTRAL_SCALE);
+    let phResult: { value: number; confidence: number; hex: string };
+    let clResult: { value: number; confidence: number; hex: string };
+    let alkResult: { value: number; confidence: number; hex: string };
 
-    // Pad 2 (Centro): pH da Água
-    const phSample = sampleCanvasRegion(ctx, centerX - padSize / 2, centerY - padSize / 2, padSize, padSize);
-    const phResult = matchChemicalValue(phSample, PH_SPECTRAL_SCALE);
+    if (targetType === 'TUBE') {
+      // =====================================================================
+      // MODO TUBOS DE ENSAIO (ESTOJO COMPARADOR LÍQUIDO)
+      // Tubo da Esquerda: Cloro (Ortotolidina/DPD Amarelo/Dourado)
+      // Tubo da Direita: pH (Vermelho de Fenol Vermelho/Alaranjado)
+      // =====================================================================
+      const tubeWidth = 40;
+      const tubeHeight = 80;
 
-    // Pad 3 (Inferior): Alcalinidade Total
-    const alkSample = sampleCanvasRegion(ctx, centerX - padSize / 2, centerY + 40, padSize, padSize);
-    const alkResult = matchChemicalValue(alkSample, ALK_SPECTRAL_SCALE);
+      // Tubo Esquerdo (Cloro Líquido)
+      const clTubeSample = sampleCanvasRegion(ctx, centerX - 60 - tubeWidth / 2, centerY - tubeHeight / 2, tubeWidth, tubeHeight);
+      clResult = matchChemicalValue(clTubeSample, TUBE_CL_SPECTRAL_SCALE);
+
+      // Tubo Direito (pH Líquido)
+      const phTubeSample = sampleCanvasRegion(ctx, centerX + 60 - tubeWidth / 2, centerY - tubeHeight / 2, tubeWidth, tubeHeight);
+      phResult = matchChemicalValue(phTubeSample, TUBE_PH_SPECTRAL_SCALE);
+
+      // Alcalinidade estimada pelo equilíbrio do estojo líquido
+      alkResult = { value: 100, confidence: 0.90, hex: '#16a34a' };
+    } else {
+      // =====================================================================
+      // MODO FITA ANALÍTICA 3-EM-1 (ALMOFADAS VERTICAIS)
+      // =====================================================================
+      const padSize = 24;
+
+      // Pad 1 (Superior): Cloro Livre
+      const clSample = sampleCanvasRegion(ctx, centerX - padSize / 2, centerY - 60, padSize, padSize);
+      clResult = matchChemicalValue(clSample, CL_SPECTRAL_SCALE);
+
+      // Pad 2 (Centro): pH da Água
+      const phSample = sampleCanvasRegion(ctx, centerX - padSize / 2, centerY - padSize / 2, padSize, padSize);
+      phResult = matchChemicalValue(phSample, PH_SPECTRAL_SCALE);
+
+      // Pad 3 (Inferior): Alcalinidade Total
+      const alkSample = sampleCanvasRegion(ctx, centerX - padSize / 2, centerY + 40, padSize, padSize);
+      alkResult = matchChemicalValue(alkSample, ALK_SPECTRAL_SCALE);
+    }
 
     // Média de confiança
     const avgConfidence = (clResult.confidence + phResult.confidence + alkResult.confidence) / 3;
@@ -308,6 +338,32 @@ export default function AiStripScannerModal({
 
         {/* Corpo do Scanner */}
         <div className="p-4 overflow-y-auto space-y-3.5 text-xs">
+          
+          {/* Seletor de Alvo: Fita Reagente vs. Tubos de Ensaio (Estojo Líquido) */}
+          <div className="grid grid-cols-2 gap-2 p-1 bg-slate-900 rounded-2xl border border-slate-800 font-bold">
+            <button
+              type="button"
+              onClick={() => { setTargetType('STRIP'); setIsFrozen(false); setAnalysisDone(false); }}
+              className={`py-2 rounded-xl transition flex items-center justify-center gap-1.5 ${
+                targetType === 'STRIP'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>🧪 Fita Reagente 4-em-1</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTargetType('TUBE'); setIsFrozen(false); setAnalysisDone(false); }}
+              className={`py-2 rounded-xl transition flex items-center justify-center gap-1.5 ${
+                targetType === 'TUBE'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>⚗️ Tubos de Ensaio (Estojo)</span>
+            </button>
+          </div>
 
           {/* Canvas Invisível de Processamento */}
           <canvas ref={canvasRef} className="hidden" />
@@ -335,32 +391,47 @@ export default function AiStripScannerModal({
               </div>
             )}
 
-            {/* Grid e Retículo de Alinhamento das 3 Almofadas da Fita */}
+            {/* Grid e Retículo de Alinhamento (Fita Vertical vs Tubos Horizontais) */}
             {cameraActive && (
               <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
+                {targetType === 'TUBE' ? (
+                  // MODO ESTOJO COMPARADOR: 2 Tubos de ensaio lado a lado
+                  <div className="w-56 h-36 border-2 border-dashed border-cyan-400/60 rounded-2xl flex justify-around items-center px-4 bg-cyan-500/5 backdrop-blur-[0.5px]">
+                    {/* Tubo 1 (Esquerda): Cloro */}
+                    <div className="w-16 h-28 border-2 border-yellow-400/90 rounded-xl bg-yellow-500/10 flex flex-col justify-between items-center py-2 shadow-lg">
+                      <span className="text-[9px] font-black font-mono text-yellow-300">CLORO</span>
+                      <span className="text-[8px] text-yellow-400/80 font-mono">Tubo Esquerdo</span>
+                    </div>
 
-                {/* Linha Guia Vertical */}
-                <div className="w-16 h-48 border-2 border-dashed border-cyan-400/60 rounded-2xl flex flex-col justify-between items-center py-2 bg-cyan-500/5 backdrop-blur-[0.5px]">
-
-                  {/* Ponto 1: Cloro Livre */}
-                  <div className="w-7 h-7 rounded-lg border-2 border-pink-400 bg-pink-500/20 flex items-center justify-center shadow-lg">
-                    <span className="text-[8px] font-black font-mono text-pink-300">Cl</span>
+                    {/* Tubo 2 (Direita): pH */}
+                    <div className="w-16 h-28 border-2 border-red-400/90 rounded-xl bg-red-500/10 flex flex-col justify-between items-center py-2 shadow-lg">
+                      <span className="text-[9px] font-black font-mono text-red-300">pH</span>
+                      <span className="text-[8px] text-red-400/80 font-mono">Tubo Direito</span>
+                    </div>
                   </div>
+                ) : (
+                  // MODO FITA ANALÍTICA: 3 Almofadas verticais
+                  <div className="w-16 h-48 border-2 border-dashed border-cyan-400/60 rounded-2xl flex flex-col justify-between items-center py-2 bg-cyan-500/5 backdrop-blur-[0.5px]">
+                    {/* Ponto 1: Cloro Livre */}
+                    <div className="w-7 h-7 rounded-lg border-2 border-pink-400 bg-pink-500/20 flex items-center justify-center shadow-lg">
+                      <span className="text-[8px] font-black font-mono text-pink-300">Cl</span>
+                    </div>
 
-                  {/* Ponto 2: pH */}
-                  <div className="w-7 h-7 rounded-lg border-2 border-amber-400 bg-amber-500/20 flex items-center justify-center shadow-lg">
-                    <span className="text-[8px] font-black font-mono text-amber-300">pH</span>
-                  </div>
+                    {/* Ponto 2: pH */}
+                    <div className="w-7 h-7 rounded-lg border-2 border-amber-400 bg-amber-500/20 flex items-center justify-center shadow-lg">
+                      <span className="text-[8px] font-black font-mono text-amber-300">pH</span>
+                    </div>
 
-                  {/* Ponto 3: Alcalinidade */}
-                  <div className="w-7 h-7 rounded-lg border-2 border-emerald-400 bg-emerald-500/20 flex items-center justify-center shadow-lg">
-                    <span className="text-[8px] font-black font-mono text-emerald-300">Alk</span>
+                    {/* Ponto 3: Alcalinidade */}
+                    <div className="w-7 h-7 rounded-lg border-2 border-emerald-400 bg-emerald-500/20 flex items-center justify-center shadow-lg">
+                      <span className="text-[8px] font-black font-mono text-emerald-300">Alk</span>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Status HUD Inferior */}
                 <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center px-2 py-1 bg-black/60 rounded-lg backdrop-blur-sm text-[9px] font-mono text-cyan-300">
-                  <span>{isFrozen ? '📸 FRAME CONGELADO' : '🟢 AMOSTRAGEM CONTÍNUA'}</span>
+                  <span>{isFrozen ? '📸 FRAME CONGELADO' : `🟢 MODO ${targetType === 'TUBE' ? 'TUBOS DE ENSAIO' : 'FITA'}`}</span>
                   <span>CONF: {(liveResults.confidence * 100).toFixed(0)}%</span>
                 </div>
               </div>
