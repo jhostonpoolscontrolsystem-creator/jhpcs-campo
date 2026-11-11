@@ -20,6 +20,7 @@ import { PoolSubstrateType, SUBSTRATE_PROFILES } from '@/lib/substrate-rules';
 import { calculateLangelierIndex } from '@/lib/chemistry/islEngine';
 import { MaintenanceLogPayload } from '@/lib/offline-db';
 import { NativeCameraCapture } from '@/components/NativeCameraCapture';
+import AiStripScannerModal from '@/components/AiStripScannerModal';
 
 interface SoloMaintenanceFormProps {
   pool: Pool;
@@ -60,6 +61,7 @@ export function SoloMaintenanceForm({
 
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submittedLog, setSubmittedLog] = useState<boolean>(false);
+  const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
 
   // ISL em tempo real
   const islResult = calculateLangelierIndex(
@@ -251,7 +253,13 @@ export function SoloMaintenanceForm({
             <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
             <span>Medição Química em Campo</span>
           </label>
-          <span className="text-[10px] text-slate-500 font-mono">Motor ISL Local</span>
+          <button
+            type="button"
+            onClick={() => setIsScannerOpen(true)}
+            className="px-2.5 py-1 rounded-lg bg-cyan-950 border border-cyan-800 hover:bg-cyan-900 text-cyan-300 text-[10px] font-bold font-mono flex items-center gap-1 transition"
+          >
+            <span>📷 Scanner Fitas Offline</span>
+          </button>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -414,6 +422,20 @@ export function SoloMaintenanceForm({
           )}
         </button>
       </div>
+      {/* Modal Scanner de Fitas Colorimétrico */}
+      {isScannerOpen && (
+        <AiStripScannerModal
+          isOpen={isScannerOpen}
+          onClose={() => setIsScannerOpen(false)}
+          poolVolumeM3={pool.volume_m3}
+          onApplyParameters={({ ph, chlorine, alkalinity }) => {
+            setPhInput(ph);
+            setChlorineInput(chlorine);
+            setAlkalinityInput(alkalinity);
+            setIsScannerOpen(false);
+          }}
+        />
+      )}
     </form>
   );
 }

@@ -1,21 +1,29 @@
 'use client';
 
-import React, { useState } from 'react';
-import { 
-  Sparkles, 
-  Scan, 
-  CheckCircle2, 
-  AlertTriangle, 
-  RefreshCw, 
-  Eye, 
-  Droplet, 
-  ShieldCheck, 
-  Camera, 
+import React, { useRef, useState, useEffect } from 'react';
+import {
+  Sparkles,
+  Scan,
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  Camera,
   Zap,
-  Sliders,
-  ChevronRight,
-  ArrowRight
+  ArrowRight,
+  WifiOff,
+  Video,
+  VideoOff,
+  Sliders
 } from 'lucide-react';
+import {
+  sampleCanvasRegion,
+  matchChemicalValue,
+  PH_SPECTRAL_SCALE,
+  CL_SPECTRAL_SCALE,
+  ALK_SPECTRAL_SCALE,
+  rgbToHex,
+  ColorRgb
+} from '@/lib/vision/colorimetryEngine';
 
 interface AiStripScannerModalProps {
   isOpen: boolean;
@@ -28,20 +36,31 @@ export default function AiStripScannerModal({
   isOpen,
   onClose,
   onApplyParameters,
-  poolVolumeM3 = 350
+  poolVolumeM3 = 50,
 }: AiStripScannerModalProps) {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisDone, setAnalysisDone] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [scanType, setScanType] = useState<'STRIP' | 'TUBE' | 'SURFACE'>('STRIP');
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // Resultados da IA
-  const [aiResult, setAiResult] = useState<{
+  // Amostragem em tempo real (Modo Contínuo / Freeze)
+  const [isFrozen, setIsFrozen] = useState(false);
+
+  // Referências para Vídeo e Canvas oculto de processamento
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+
+  // Resultados Colorimétricos em Tempo Real
+  const [liveResults, setLiveResults] = useState<{
     ph: number;
     chlorine: number;
     alkalinity: number;
     confidence: number;
-    colorMatch: { phHex: string; clHex: string; alkHex: string };
+    phHex: string;
+    clHex: string;
+    alkHex: string;
     verdict: string;
     engine: string;
   }>({
@@ -49,269 +68,433 @@ export default function AiStripScannerModal({
     chlorine: 2.0,
     alkalinity: 100,
     confidence: 0.98,
-    colorMatch: { phHex: '#eab308', clHex: '#0284c7', alkHex: '#059669' },
-    verdict: 'Parâmetros ideais. Água em equilíbrio químico perfeito (LSI +0.05).',
-    engine: 'JHPCS Multimodal Vision Engine'
+    phHex: '#ef4444',
+    clHex: '#f472b6',
+    alkHex: '#16a34a',
+    verdict: 'Aguardando alinhamento da fita ou cubeta no visor...',
+    engine: 'JHPCS Offline Colorimetry Engine (HSV/RGB)',
   });
 
-  if (!isOpen) return null;
-
-  // Simulação de captura rápida com amostra de calibração
-  const handleTriggerAiScan = async (samplePreset: 'PERFEITO' | 'ACIDO_RED_ZONE' | 'CLORO_BAIXO') => {
-    setAnalyzing(true);
-    setAnalysisDone(false);
-
-    let samplePh = 7.4;
-    let sampleCl = 2.0;
-    let sampleAlk = 100;
-    let verdict = 'Parâmetros na faixa ouro JHostonTec. Monólito 100% protegido.';
-
-    if (samplePreset === 'ACIDO_RED_ZONE') {
-      samplePh = 6.6;
-      sampleCl = 1.0;
-      sampleAlk = 50;
-      verdict = 'ALERTA CRÍTICO: Água ácida detectada. Risco imediato ao cimento e resina.';
-    } else if (samplePreset === 'CLORO_BAIXO') {
-      samplePh = 7.5;
-      sampleCl = 0.5;
-      sampleAlk = 90;
-      verdict = 'ATENÇÃO: Cloro abaixo do limite de desinfecção microbiológica.';
+  // Iniciar Câmera ao abrir modal
+  useEffect(() => {
+    if (isOpen) {
+      startCamera();
+    } else {
+      stopCamera();
     }
+    return () => {
+      stopCamera();
+    };
+  }, [isOpen]);
 
+  const startCamera = async () => {
+    setCameraError(null);
     try {
-      // Chamada real ao endpoint
-      const res = await fetch('/api/ai/scan-strip', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image_base64: 'data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-          image_type: scanType === 'SURFACE' ? 'FOTO_PISCINA_PANORAMICA' : 'FOTO_TESTE_AGUA',
-          pool_volume_m3: poolVolumeM3
-        })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
       });
 
-      const json = await res.json();
-      
-      // Simula o tempo real do modelo de visão
-      setTimeout(() => {
-        setAiResult({
-          ph: samplePh,
-          chlorine: sampleCl,
-          alkalinity: sampleAlk,
-          confidence: json.data?.confidence || 0.97,
-          colorMatch: {
-            phHex: samplePh < 7.0 ? '#ef4444' : '#eab308',
-            clHex: sampleCl < 1.0 ? '#93c5fd' : '#0284c7',
-            alkHex: sampleAlk < 80 ? '#f59e0b' : '#059669'
-          },
-          verdict: verdict,
-          engine: json.engine || 'JHPCS Multimodal Vision Engine'
-        });
-        setAnalyzing(false);
-        setAnalysisDone(true);
-      }, 1200);
-    } catch (e) {
-      setAnalyzing(false);
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+        setCameraActive(true);
+        startRealtimeProcessing();
+      }
+    } catch (err: any) {
+      console.warn('Câmera indisponível no dispositivo:', err.message);
+      setCameraError('Permissão de câmera negada ou dispositivo sem suporte.');
+      setCameraActive(false);
     }
   };
 
-  const handleConfirmAndApply = () => {
-    onApplyParameters({
-      ph: aiResult.ph,
-      chlorine: aiResult.chlorine,
-      alkalinity: aiResult.alkalinity
+  const stopCamera = () => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setCameraActive(false);
+    setIsFrozen(false);
+  };
+
+  // Loop de processamento espectral no Canvas (10-15 fps para economizar bateria)
+  const startRealtimeProcessing = () => {
+    let lastProcessTime = 0;
+
+    const processFrame = (timestamp: number) => {
+      if (isFrozen) return;
+
+      // Executa amostragem a cada 150ms (~6.6 FPS, ideal para CPU móvel)
+      if (timestamp - lastProcessTime > 150) {
+        lastProcessTime = timestamp;
+        processCurrentVideoFrame();
+      }
+
+      animFrameRef.current = requestAnimationFrame(processFrame);
+    };
+
+    animFrameRef.current = requestAnimationFrame(processFrame);
+  };
+
+  const processCurrentVideoFrame = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || video.readyState < 2) return;
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    // Ajusta dimensões do canvas de análise
+    canvas.width = 640;
+    canvas.height = 360;
+
+    // Desenha o frame atual
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Amostragem nas 3 regiões do visor retangular central
+    // Fita padrão: 3 almofadas (pads) alinhadas verticalmente no centro
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const padSize = 24;
+
+    // Pad 1 (Superior): Cloro Livre
+    const clSample = sampleCanvasRegion(ctx, centerX - padSize / 2, centerY - 60, padSize, padSize);
+    const clResult = matchChemicalValue(clSample, CL_SPECTRAL_SCALE);
+
+    // Pad 2 (Centro): pH da Água
+    const phSample = sampleCanvasRegion(ctx, centerX - padSize / 2, centerY - padSize / 2, padSize, padSize);
+    const phResult = matchChemicalValue(phSample, PH_SPECTRAL_SCALE);
+
+    // Pad 3 (Inferior): Alcalinidade Total
+    const alkSample = sampleCanvasRegion(ctx, centerX - padSize / 2, centerY + 40, padSize, padSize);
+    const alkResult = matchChemicalValue(alkSample, ALK_SPECTRAL_SCALE);
+
+    // Média de confiança
+    const avgConfidence = (clResult.confidence + phResult.confidence + alkResult.confidence) / 3;
+
+    let verdict = 'Parâmetros balanceados. Água segura para banho.';
+    if (phResult.value < 7.2) {
+      verdict = 'ALERTA: pH ácido detectado. Risco de corrosão do monólito e rejuntes.';
+    } else if (phResult.value > 7.8) {
+      verdict = 'ATENÇÃO: pH elevado. Risco de água turva e inativação do cloro.';
+    } else if (clResult.value < 1.0) {
+      verdict = 'ATENÇÃO: Cloro livre insuficiente para proteção sanitária.';
+    }
+
+    setLiveResults({
+      ph: phResult.value,
+      chlorine: clResult.value,
+      alkalinity: Math.round(alkResult.value),
+      confidence: Math.round(avgConfidence * 100) / 100,
+      phHex: phResult.hex,
+      clHex: clResult.hex,
+      alkHex: alkResult.hex,
+      verdict,
+      engine: 'JHPCS Offline Colorimetry (Local Canvas)',
     });
+  };
+
+  // Congelar / Capturar Leitura do Frame Atual
+  const handleCaptureFreeze = () => {
+    setIsFrozen(true);
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+    }
+    processCurrentVideoFrame();
+    setAnalysisDone(true);
+  };
+
+  const handleResumeLive = () => {
+    setIsFrozen(false);
+    setAnalysisDone(false);
+    startRealtimeProcessing();
+  };
+
+  // Simulações rápidas de calibração caso a câmera física esteja inacessível
+  const handleSimulatePreset = (preset: 'PERFEITO' | 'ACIDO' | 'CLORO_BAIXO') => {
+    setIsFrozen(true);
+    setAnalysisDone(true);
+
+    if (preset === 'PERFEITO') {
+      setLiveResults({
+        ph: 7.4,
+        chlorine: 2.0,
+        alkalinity: 100,
+        confidence: 0.98,
+        phHex: '#ef4444',
+        clHex: '#f472b6',
+        alkHex: '#16a34a',
+        verdict: 'Parâmetros ideais. Água em equilíbrio químico perfeito (ISL +0.08).',
+        engine: 'Simulação Espectral Calibrada (Ideal)',
+      });
+    } else if (preset === 'ACIDO') {
+      setLiveResults({
+        ph: 6.8,
+        chlorine: 1.5,
+        alkalinity: 60,
+        confidence: 0.96,
+        phHex: '#eab308',
+        clHex: '#fbcfe8',
+        alkHex: '#ca8a04',
+        verdict: '⚠️ ÁGUA ÁCIDA: pH 6.8 e Alcalinidade 60 ppm. Risco à matriz mineral.',
+        engine: 'Simulação Espectral Calibrada (Ácida)',
+      });
+    } else {
+      setLiveResults({
+        ph: 7.5,
+        chlorine: 0.5,
+        alkalinity: 90,
+        confidence: 0.95,
+        phHex: '#f97316',
+        clHex: '#f1f5f9',
+        alkHex: '#65a30d',
+        verdict: '⚠️ CLORO CRÍTICO: 0.5 ppm. Requer reforço de cloro livre imediato.',
+        engine: 'Simulação Espectral Calibrada (Cloro Baixo)',
+      });
+    }
+  };
+
+  const handleApplyToForm = () => {
+    onApplyParameters({
+      ph: liveResults.ph,
+      chlorine: liveResults.chlorine,
+      alkalinity: liveResults.alkalinity,
+    });
+    stopCamera();
     onClose();
   };
 
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-slate-950 border border-cyan-500/40 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl shadow-cyan-950/80 flex flex-col max-h-[92vh]">
-        {/* HEADER */}
-        <div className="p-5 bg-gradient-to-r from-slate-900 via-slate-950 to-cyan-950 border-b border-cyan-500/20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/30 rounded-2xl text-cyan-400">
-              <Sparkles className="w-5 h-5 animate-pulse" />
+    <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
+      <div className="bg-slate-950 border border-cyan-500/40 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[94vh]">
+
+        {/* Header */}
+        <div className="p-4 bg-gradient-to-r from-slate-900 via-slate-950 to-cyan-950 border-b border-cyan-500/20 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-cyan-500/10 border border-cyan-500/30 rounded-xl text-cyan-400">
+              <Sparkles className="w-4 h-4 animate-pulse" />
             </div>
             <div>
-              <span className="text-[10px] font-mono font-black text-cyan-400 uppercase tracking-widest block">
-                FASE 2 • IA MULTIMODAL & COMPUTER VISION
+              <span className="text-[9px] font-mono font-bold text-cyan-400 uppercase tracking-widest block">
+                VISÃO COMPUTACIONAL 100% OFFLINE
               </span>
-              <h3 className="text-lg font-black text-white flex items-center gap-2">
-                Scanner Inteligente de Fitas & Cubeta
+              <h3 className="text-sm font-black text-white flex items-center gap-1.5">
+                <span>Leitor Colorimétrico de Fitas</span>
+                <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 py-0.5 rounded font-mono">
+                  Edge Canvas
+                </span>
               </h3>
             </div>
           </div>
 
           <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-xl bg-slate-900 hover:bg-slate-800 transition"
+            onClick={() => { stopCamera(); onClose(); }}
+            className="text-slate-400 hover:text-white p-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 transition text-xs"
           >
             ✕
           </button>
         </div>
 
-        {/* BODY */}
-        <div className="p-5 overflow-y-auto space-y-5">
-          {/* Seletor do Tipo de Alvo */}
-          <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-900 rounded-2xl border border-slate-800 text-xs font-bold">
-            <button
-              onClick={() => { setScanType('STRIP'); setAnalysisDone(false); }}
-              className={`py-2 rounded-xl transition ${
-                scanType === 'STRIP' ? 'bg-cyan-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Fita Reagente 4-em-1
-            </button>
-            <button
-              onClick={() => { setScanType('TUBE'); setAnalysisDone(false); }}
-              className={`py-2 rounded-xl transition ${
-                scanType === 'TUBE' ? 'bg-cyan-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Cubeta Colorimétrica
-            </button>
-            <button
-              onClick={() => { setScanType('SURFACE'); setAnalysisDone(false); }}
-              className={`py-2 rounded-xl transition ${
-                scanType === 'SURFACE' ? 'bg-cyan-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Superfície Monolito
-            </button>
-          </div>
+        {/* Corpo do Scanner */}
+        <div className="p-4 overflow-y-auto space-y-3.5 text-xs">
 
-          {/* Área de Visualização da Câmera / Visão Computacional */}
-          <div className="relative aspect-video rounded-2xl border-2 border-dashed border-cyan-500/40 bg-slate-900/60 overflow-hidden flex flex-col items-center justify-center p-6 text-center group">
-            {/* Linhas de Calibração Óptica (Visor HUD) */}
-            <div className="absolute inset-4 border border-cyan-500/20 rounded-xl pointer-events-none flex flex-col justify-between p-2">
-              <div className="flex justify-between text-[9px] font-mono text-cyan-500/60">
-                <span>[OPTICAL CALIBRATION]</span>
-                <span>ISO AUTO • 6500K</span>
-              </div>
-              <div className="w-12 h-12 border-2 border-cyan-400/60 rounded-lg mx-auto self-center flex items-center justify-center">
-                <Scan className="w-6 h-6 text-cyan-400 animate-pulse" />
-              </div>
-              <div className="flex justify-between text-[9px] font-mono text-cyan-500/60">
-                <span>AI MODEL: JHPCS-VISION-v2.1</span>
-                <span>CONFIDENCE: 98.4%</span>
-              </div>
-            </div>
+          {/* Canvas Invisível de Processamento */}
+          <canvas ref={canvasRef} className="hidden" />
 
-            {analyzing ? (
-              <div className="space-y-3 z-10 bg-slate-950/80 p-6 rounded-2xl border border-cyan-500/40">
-                <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin mx-auto" />
-                <p className="text-sm font-bold text-white">IA Analisando Espectro de Cores...</p>
-                <p className="text-xs text-slate-400 font-mono">Segmentando faixas de pH, Cloro e Alcalinidade...</p>
-              </div>
-            ) : analysisDone ? (
-              <div className="space-y-2 z-10 bg-slate-950/90 p-5 rounded-2xl border border-emerald-500/40 max-w-md">
-                <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-                <h4 className="text-sm font-black text-white">Leitura Espectral Concluída!</h4>
-                <p className="text-xs text-slate-300 leading-relaxed">{aiResult.verdict}</p>
-              </div>
+          {/* Visor da Câmera em Tempo Real com HUD Espectral */}
+          <div className="relative aspect-video rounded-2xl bg-black overflow-hidden border border-cyan-500/40 shadow-inner flex items-center justify-center">
+            {cameraActive ? (
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
             ) : (
-              <div className="space-y-3 z-10">
-                <Camera className="w-10 h-10 text-cyan-400 mx-auto opacity-80 group-hover:scale-110 transition" />
-                <h4 className="text-sm font-bold text-white">
-                  Posicione a fita reagente ou cubeta no centro da tela
-                </h4>
-                <p className="text-xs text-slate-400 max-w-xs">
-                  A IA calibrará a luz ambiente e extrairá os valores com precisão espectral.
-                </p>
+              <div className="text-center p-4 space-y-2">
+                <VideoOff className="w-8 h-8 text-slate-600 mx-auto" />
+                <p className="text-slate-400 font-bold text-xs">{cameraError || 'Iniciando câmera do aparelho...'}</p>
+                <button
+                  type="button"
+                  onClick={startCamera}
+                  className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-bold text-[11px]"
+                >
+                  Tentar Novamente
+                </button>
+              </div>
+            )}
+
+            {/* Grid e Retículo de Alinhamento das 3 Almofadas da Fita */}
+            {cameraActive && (
+              <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
+
+                {/* Linha Guia Vertical */}
+                <div className="w-16 h-48 border-2 border-dashed border-cyan-400/60 rounded-2xl flex flex-col justify-between items-center py-2 bg-cyan-500/5 backdrop-blur-[0.5px]">
+
+                  {/* Ponto 1: Cloro Livre */}
+                  <div className="w-7 h-7 rounded-lg border-2 border-pink-400 bg-pink-500/20 flex items-center justify-center shadow-lg">
+                    <span className="text-[8px] font-black font-mono text-pink-300">Cl</span>
+                  </div>
+
+                  {/* Ponto 2: pH */}
+                  <div className="w-7 h-7 rounded-lg border-2 border-amber-400 bg-amber-500/20 flex items-center justify-center shadow-lg">
+                    <span className="text-[8px] font-black font-mono text-amber-300">pH</span>
+                  </div>
+
+                  {/* Ponto 3: Alcalinidade */}
+                  <div className="w-7 h-7 rounded-lg border-2 border-emerald-400 bg-emerald-500/20 flex items-center justify-center shadow-lg">
+                    <span className="text-[8px] font-black font-mono text-emerald-300">Alk</span>
+                  </div>
+                </div>
+
+                {/* Status HUD Inferior */}
+                <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center px-2 py-1 bg-black/60 rounded-lg backdrop-blur-sm text-[9px] font-mono text-cyan-300">
+                  <span>{isFrozen ? '📸 FRAME CONGELADO' : '🟢 AMOSTRAGEM CONTÍNUA'}</span>
+                  <span>CONF: {(liveResults.confidence * 100).toFixed(0)}%</span>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Teste Rápido de Calibração (Simulações de Campo) */}
-          <div className="space-y-2">
-            <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">
-              Simular Leitura de Campo Instantânea:
+          {/* Botões de Ação da Câmera (Freeze / Live) */}
+          {cameraActive && (
+            <div className="flex gap-2">
+              {!isFrozen ? (
+                <button
+                  type="button"
+                  onClick={handleCaptureFreeze}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-black text-xs shadow-md shadow-cyan-500/20 flex items-center justify-center gap-1.5 transition active:scale-[0.98]"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>Capturar & Congelar Leitura</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleResumeLive}
+                  className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
+                  <span>Retomar Câmera ao Vivo</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* PAINEL DE VALORES EXTRAÍDOS (TEMPO REAL / OFFLINE) */}
+          <div className="p-3 bg-slate-900 border border-slate-800 rounded-2xl space-y-2.5">
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Leitura Espectral Obtida</span>
+              </span>
+              <span className="text-[10px] text-slate-500 font-mono">
+                {liveResults.engine}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center font-mono">
+              {/* Cloro Livre */}
+              <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800/80">
+                <div
+                  className="w-3 h-3 rounded-full mx-auto mb-1 border border-white/30"
+                  style={{ backgroundColor: liveResults.clHex }}
+                />
+                <span className="text-[10px] text-slate-500 uppercase block">Cloro ppm</span>
+                <span className={`text-lg font-black ${liveResults.chlorine < 1.0 ? 'text-amber-400' : 'text-cyan-400'}`}>
+                  {liveResults.chlorine.toFixed(1)}
+                </span>
+              </div>
+
+              {/* pH */}
+              <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800/80">
+                <div
+                  className="w-3 h-3 rounded-full mx-auto mb-1 border border-white/30"
+                  style={{ backgroundColor: liveResults.phHex }}
+                />
+                <span className="text-[10px] text-slate-500 uppercase block">pH Água</span>
+                <span className={`text-lg font-black ${liveResults.ph < 7.2 ? 'text-red-400' : 'text-emerald-400'}`}>
+                  {liveResults.ph.toFixed(1)}
+                </span>
+              </div>
+
+              {/* Alcalinidade */}
+              <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800/80">
+                <div
+                  className="w-3 h-3 rounded-full mx-auto mb-1 border border-white/30"
+                  style={{ backgroundColor: liveResults.alkHex }}
+                />
+                <span className="text-[10px] text-slate-500 uppercase block">Alcalinidade</span>
+                <span className={`text-lg font-black ${liveResults.alkalinity < 80 ? 'text-amber-400' : 'text-purple-400'}`}>
+                  {liveResults.alkalinity}
+                </span>
+              </div>
+            </div>
+
+            {/* Diagnóstico Rápido */}
+            <p className="text-[11px] text-slate-300 leading-snug px-1">
+              {liveResults.verdict}
+            </p>
+          </div>
+
+          {/* Presets de Teste Rápido (Fallback se não houver fita física no momento) */}
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-mono uppercase text-slate-500 font-bold block">
+              Calibrações de Teste Rápido:
             </span>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               <button
-                disabled={analyzing}
-                onClick={() => handleTriggerAiScan('PERFEITO')}
-                className="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-emerald-500/30 text-emerald-400 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                type="button"
+                onClick={() => handleSimulatePreset('PERFEITO')}
+                className="py-1.5 px-2 rounded-xl bg-slate-900 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold truncate transition"
               >
-                <span>🧪 Fita Ideal (pH 7.4)</span>
+                Fita Ideal (7.4)
               </button>
               <button
-                disabled={analyzing}
-                onClick={() => handleTriggerAiScan('ACIDO_RED_ZONE')}
-                className="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-rose-500/30 text-rose-400 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                type="button"
+                onClick={() => handleSimulatePreset('ACIDO')}
+                className="py-1.5 px-2 rounded-xl bg-slate-900 border border-red-500/30 text-red-300 text-[10px] font-bold truncate transition"
               >
-                <span>⚠️ Fita Ácida (pH 6.6)</span>
+                Fita Ácida (6.8)
               </button>
               <button
-                disabled={analyzing}
-                onClick={() => handleTriggerAiScan('CLORO_BAIXO')}
-                className="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-amber-500/30 text-amber-400 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                type="button"
+                onClick={() => handleSimulatePreset('CLORO_BAIXO')}
+                className="py-1.5 px-2 rounded-xl bg-slate-900 border border-amber-500/30 text-amber-300 text-[10px] font-bold truncate transition"
               >
-                <span>📉 Cloro Baixo (0.5 ppm)</span>
+                Cloro Baixo (0.5)
               </button>
             </div>
           </div>
-
-          {/* PAINEL DE VALORES DETECTADOS PELA IA */}
-          {analysisDone && (
-            <div className="p-4 bg-slate-900/90 rounded-2xl border border-cyan-500/30 space-y-4 animate-in fade-in">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-mono font-bold text-cyan-400 uppercase">Valores Extraídos por IA</span>
-                <span className="font-mono text-slate-400 text-[10px]">Confiança: {(aiResult.confidence * 100).toFixed(1)}%</span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3 text-center font-mono">
-                {/* pH */}
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <div className="w-3 h-3 rounded-full mx-auto mb-1 border border-white/20" style={{ backgroundColor: aiResult.colorMatch.phHex }} />
-                  <span className="text-[10px] text-slate-500 uppercase block">pH Extraído</span>
-                  <span className={`text-xl font-black ${aiResult.ph < 7.0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                    {aiResult.ph.toFixed(1)}
-                  </span>
-                </div>
-
-                {/* Cloro */}
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <div className="w-3 h-3 rounded-full mx-auto mb-1 border border-white/20" style={{ backgroundColor: aiResult.colorMatch.clHex }} />
-                  <span className="text-[10px] text-slate-500 uppercase block">Cloro ppm</span>
-                  <span className={`text-xl font-black ${aiResult.chlorine < 1.0 ? 'text-amber-400' : 'text-cyan-400'}`}>
-                    {aiResult.chlorine.toFixed(1)}
-                  </span>
-                </div>
-
-                {/* Alcalinidade */}
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <div className="w-3 h-3 rounded-full mx-auto mb-1 border border-white/20" style={{ backgroundColor: aiResult.colorMatch.alkHex }} />
-                  <span className="text-[10px] text-slate-500 uppercase block">Alcalinidade</span>
-                  <span className={`text-xl font-black ${aiResult.alkalinity < 80 ? 'text-amber-400' : 'text-indigo-400'}`}>
-                    {aiResult.alkalinity}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* FOOTER */}
+        {/* Footer com Botão de Aplicação no Formulário */}
         <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between">
           <button
-            onClick={onClose}
+            type="button"
+            onClick={() => { stopCamera(); onClose(); }}
             className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white transition"
           >
             Cancelar
           </button>
 
           <button
-            disabled={!analysisDone}
-            onClick={handleConfirmAndApply}
-            className={`px-5 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 transition ${
-              analysisDone
-                ? 'bg-gradient-to-r from-cyan-500 to-teal-400 text-slate-950 shadow-lg shadow-cyan-500/30 hover:scale-105 cursor-pointer'
-                : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-            }`}
+            type="button"
+            onClick={handleApplyToForm}
+            className="px-5 py-2.5 rounded-xl font-black text-xs bg-gradient-to-r from-cyan-500 to-teal-400 text-slate-950 shadow-lg shadow-cyan-500/30 hover:scale-105 active:scale-95 transition flex items-center gap-1.5 cursor-pointer"
           >
-            <span>Preencher Parâmetros no Formulário</span>
+            <span>Preencher no Formulário</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

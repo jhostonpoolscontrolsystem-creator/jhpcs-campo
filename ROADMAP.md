@@ -85,9 +85,17 @@ timeline
 - [x] **Aderência Offline com Alerta Elegante**:
   - Detecção de rede com notificação para sincronização de fotos da nuvem.
 
-### 🔮 Fase 8: Próximos Passos (Q1 2027)
+### 🔬 Fase 8: Visão Computacional Embarcada (Edge Colorimetry) (CONCLUÍDO - v4.2)
+- [x] **Leitura Espectral Direta no Canvas (`colorimetryEngine.ts`)**:
+  - Processamento de pixels em tempo real via câmera sem chamada de IA na nuvem.
+  - Amostragem RGB/HSV nas 3 almofadas da fita analítica (Cloro Livre, pH e Alcalinidade).
+  - Algoritmo de interpolação espectral e rejeição de reflexos especulares.
+- [x] **Visor HUD de Fitas com Freeze (`AiStripScannerModal.tsx`)**:
+  - Enquadramento com guias das almofadas da fita e preenchimento automático no formulário.
+
+### 🔮 Fase 9: Próximos Passos (Q1 2027)
 - [ ] **Integração Waze / Google Maps Navigation**:
   - Botão de 1 toque no card da piscina mais próxima no Cockpit para abrir rota guiada por voz no Waze/Google Maps.
-- [ ] **Visão Computacional Local para Leitura de Fitas (TensorFlow.js / WebAssembly)**:
-  - Leitura colorimétrica local sem necessidade de conexão com a nuvem.
+- [ ] **Modo Emergência / Água Verde (Receituário de Choque)**:
+  - Cálculo estequiométrico de choque químico contra algas com roteiro passo a passo de decantação e aspiração ao esgoto.
 

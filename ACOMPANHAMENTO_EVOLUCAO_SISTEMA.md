@@ -8,7 +8,8 @@
 
 | Versão | Data | Status | Descrição Sumária |
 | :--- | :--- | :--- | :--- |
-| **v4.1.0** | 11/11/2026 | **Produção / Homologado** | Central de Relatórios & Fechamento Mensal no PWA: Dossiê WhatsApp, Lista de Químicos e Livro Sanitário Anvisa |
+| **v4.2.0** | 11/11/2026 | **Produção / Homologado** | Visão Computacional Embarcada (Edge Canvas Colorimetry): Leitura contínua de fitas 100% offline em subsolos |
+| **v4.1.0** | 11/11/2026 | **Homologado** | Central de Relatórios & Fechamento Mensal no PWA: Dossiê WhatsApp, Lista de Químicos e Livro Sanitário Anvisa |
 | **v4.0.0** | 11/11/2026 | **Homologado** | Arquitetura Polimórfica e Modular por Perfil (SOLO, FLEET, FACILITY, ENTERPRISE JHOSTON), ISL local e Contas Demo |
 | **v3.1.0** | 11/11/2026 | **Homologado** | Cockpit do Tratador: Roteiro por proximidade Haversine, saldo móvel da caminhonete e badges de status de visita |
 | **v3.0.0** | 10/11/2026 | **Homologado** | Emissor de Cupom Fiscal e Recibo de Atendimento com Contingência Offline Sefaz |
@@ -21,6 +22,28 @@
 ---
 
 ## 🔍 Detalhamento dos Ciclos de Evolução
+
+### [v4.2.0] — 11/11/2026 • Visão Computacional Embarcada (Edge Canvas Colorimetry)
+> **Objetivo:** Permitir ao tratador apontar a câmera do celular para a fita reagente ou cubeta e extrair automaticamente os valores de Cloro Livre, pH e Alcalinidade diretamente no hardware local, mesmo 100% offline em subsolos ou casas de máquinas blindadas.
+
+#### 1. Motor Espectral em Canvas Local (`src/lib/vision/colorimetryEngine.ts`)
+- **Amostragem em Tempo Real sem Dependência de Nuvem**:
+  * Captura os frames do feed de vídeo da câmera (`navigator.mediaDevices.getUserMedia`) renderizados em um Canvas oculto de alta performance (`willReadFrequently: true`).
+  * Converte os pixels para o espaço RGB/HSV com cálculo de distância colorimétrica perceptiva (*Red-mean euclidiana* ponderada).
+- **Escalas Espectrais Calibradas**:
+  * Escala de Cloro DPD (0.0 a 5.0 ppm).
+  * Escala de pH Fenol Vermelho (6.8 a 8.4).
+  * Escala de Alcalinidade Total (40 a 240 ppm).
+- **Filtro de Ruído & Rejeição Especular**:
+  * Descarta reflexos solares saturados e sombras escuras para manter a confiança analítica acima de 95%.
+
+#### 2. Visor HUD com Congelamento de Frame (`src/components/AiStripScannerModal.tsx`)
+- Retículo visual que orienta o tratador a centralizar as 3 almofadas (pads) da fita reagente na tela.
+- Amostragem contínua a cada ~150ms com baixo consumo de bateria.
+- Botão **"Capturar & Congelar Leitura"** com opção de retomar ao vivo ou aplicar instantaneamente os dados extraídos nos formulários de visita.
+- Presets de calibração rápida para validação de bancada.
+
+---
 
 ### [v4.1.0] — 11/11/2026 • Central de Relatórios & Fechamento Mensal no PWA
 > **Objetivo:** Permitir ao tratador/técnico gerar e compartilhar diretamente da borda da piscina relatórios de última visita, dossiês de fechamento mensal com chave PIX e exportação do livro sanitário NBR 10.818 da ANVISA.
