@@ -8,7 +8,9 @@
 
 | Versão | Data | Status | Descrição Sumária |
 | :--- | :--- | :--- | :--- |
-| **v4.5.0** | 11/11/2026 | **Produção / Homologado** | Alertas Meteorológicos Preditivos (48h): Sincronização offline, badges de risco e dosagem preventiva |
+| **v4.7.0** | 11/11/2026 | **Produção / Homologado** | Nova Tela de Login Dedicada (`/login`): Precision PoolTech, detecção de ambiente (PWA vs Web), contingência offline e leitura NFC/QR |
+| **v4.6.0** | 11/11/2026 | **Homologado** | Modo High-Contrast Outdoor (Sol Pleno): Fontes condensadas, touch targets gigantes (> 52px) e Haptic Feedback tátil |
+| **v4.5.0** | 11/11/2026 | **Homologado** | Alertas Meteorológicos Preditivos (48h): Sincronização offline, badges de risco e dosagem preventiva |
 | **v4.4.0** | 11/11/2026 | **Homologado** | Leitura Colorimétrica de Tubos de Ensaio (Estojo Comparador Líquido de Cloro/pH) 100% Offline |
 | **v4.3.0** | 11/11/2026 | **Homologado** | Visão Computacional no Edge: Inspeção de microfissuras e descontinuidade de rejuntes via Sobel 3x3 local |
 | **v4.2.0** | 11/11/2026 | **Homologado** | Visão Computacional Embarcada (Edge Canvas Colorimetry): Leitura contínua de fitas 100% offline em subsolos |
@@ -25,6 +27,54 @@
 ---
 
 ## 🔍 Detalhamento dos Ciclos de Evolução
+
+### [v4.7.0] — 11/11/2026 • Nova Tela de Login Dedicada (`/login`), Detecção de Ambiente & Retomada Offline
+> **Objetivo:** Estabelecer uma experiência de autenticação de alta confiabilidade em campo, com estética Dark Slate "Precision PoolTech", detecção rigorosa de PWA/Celular vs. Desktop, contingência offline imediata para técnicos sem sinal e suporte contextual a Plaquetas NFC/QR Code.
+
+#### 1. Detecção de Ambiente (`src/hooks/useDeviceContext.ts`)
+- Identifica se o PWA está em modo instalado (`display-mode: standalone` ou `navigator.standalone === true`) e se a largura é mobile (`< 768px`).
+- **Regra de Ouro**: Em celular ou PWA instalado, **oculta completamente** qualquer botão ou seletor de contas de teste (`teste.*@teste.com`), mantendo foco estrito na operação real.
+- Em navegadores desktop normais (`!isFieldDevice`), exibe um acordeão discreto no rodapé (*"Modo Demonstração / Auditoria Web"*) para demonstrações comerciais e auditoria.
+
+#### 2. Resiliência Offline & Retomada Rápida de Sessão (`src/lib/auth/cachedSession.ts`)
+- Ao realizar login com sucesso, persiste metadados da sessão (`last_operator_name`, `last_tenant_name`, `last_sector_badge`, `cached_session_token`, `last_sync_at`).
+- Sem internet (`!navigator.onLine`), a tela exibe banner âmbar/ciano e oferece o botão em destaque:
+  `"Continuar como [Nome do Operador]"` permitindo acesso imediato ao cockpit para registrar vistorias no IndexedDB.
+
+#### 3. Contexto de Plaqueta NFC / QR Code de Casa de Máquinas
+- Parâmetros `?pool_id=...` ou `?nfc_tag=...` lidos automaticamente na URL.
+- Exibe banner de destaque com a identificação do ativo e, após a validação biométrica ou por senha, redireciona o operador diretamente para o prontuário daquela piscina específica.
+
+#### 4. Design System "Precision PoolTech" & Biometria
+- Paleta Dark Slate profunda (`#080C16`) com reflexo radial ciano superior.
+- Inputs ergonômicos `h-14` (evitando zoom indesejado no iOS Safari) com toggle tátil de exibição de senha.
+- Botão biométrico nativo WebAuthn (Touch ID / Face ID) com vibração háptica tátil e botão de ação principal de 56px de altura.
+
+---
+
+### [v4.6.0] — 11/11/2026 • Modo High-Contrast Outdoor (Sol Pleno), Touch Targets Gigantes & Haptic Feedback
+> **Objetivo:** Garantir legibilidade máxima e conforto ergonômico sob luz solar direta intensa, reflexos do espelho d'água e operação com luvas de borracha ou dedos molhados na borda da piscina.
+
+#### 1. Modo High-Contrast Outdoor (`src/context/OutdoorDisplayContext.tsx` & `src/app/globals.css`)
+- **Toggle de 1 Toque no Cabeçalho**: Botão rápido `[ ☀️ Sol ]` no topo do app para alternância instantânea entre tema padrão e modo alto contraste solar.
+- **Calibração Espectral Solar**:
+  * Fundo preto absoluto (`#000000`) com reforço de saturação e contraste global (`filter: contrast(1.25) saturate(1.2)`).
+  * Bordas ativas em amarelo âmbar de alta visibilidade (`#facc15`) com sombras rígidas, eliminando ofuscamento por claridade.
+  * Clareamento de textos secundários para `#ffffff` e `#e2e8f0` para legibilidade em ângulos oblíquos.
+
+#### 2. Touch Targets Gigantes (> 52px) & Fontes Condensadas
+- Todos os botões críticos de ação (Check-in, Iniciar Vistoria, Relatórios, Checkbox Preventivo, Confirmação) padronizados com altura mínima de **54px** (`min-h-[54px]`) e tipografia condensada de alto peso (*font-black / uppercase*).
+- Área de clique expandida permitindo operação rápida com o polegar com apenas uma das mãos.
+
+#### 3. Motor de Microvibração Háptica (`src/lib/ui/haptics.ts`)
+- Módulo `triggerHaptic()` baseado na API nativa `navigator.vibrate`, fornecendo resposta tátil imediata para:
+  * `light` (15ms): Navegação em abas, toggles rápidos e seletor de rotas.
+  * `medium` (30ms): Início de atendimento, seleção de fotos e cálculo ISL.
+  * `success` ([25, 30, 45]ms): Confirmação de dosagem climática e transmissão de laudo.
+  * `heavy` (55ms): Alternância do modo sol e finalização de checklist.
+  * `error` ([70, 40, 90]ms): Trava de geofencing ultrapassada ou campos pendentes.
+
+---
 
 ### [v4.5.0] — 11/11/2026 • Alertas Meteorológicos Preditivos (48h) & Dosagem Estequiométrica Preventiva
 > **Objetivo:** Consumir os alertas meteorológicos preditivos (48h) gerados pelo Core (`GET /api/v1/pwa/weather-alerts`) na rotina de sincronização offline do PWA, salvando no IndexedDB e instruindo dosagens preventivas automáticas com baixa estequiométrica de estoque.

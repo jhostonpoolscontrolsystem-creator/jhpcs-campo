@@ -19,8 +19,11 @@ import {
   Building2,
   Truck,
   Zap,
-  Sparkles
+  Sparkles,
+  Sun
 } from 'lucide-react';
+import { useOutdoorDisplay } from '@/context/OutdoorDisplayContext';
+import { triggerHaptic } from '@/lib/ui/haptics';
 import { Pool } from '@/types/database';
 import { mockPools } from '@/lib/mock-data';
 import { TargetSector, DEMO_ACCOUNTS, TechnicianUserSession } from '@/types/profiles';
@@ -42,11 +45,18 @@ import {
 } from '@/lib/offline-db';
 import { runFullOfflineSync } from '@/lib/offline/syncEngine';
 import { PoolWeatherAlert } from '@/types/weatherAlerts';
+import { 
+  saveCachedSession, 
+  getCachedSession, 
+  clearCachedSession,
+  CachedSessionMetadata 
+} from '@/lib/auth/cachedSession';
 import { requestNotificationPermission } from '@/lib/firebase';
 import { isBiometricsAvailable, authenticateWithBiometrics } from '@/lib/auth/webauthn';
 import { compressImageToUltraLightWebP } from '@/lib/image-compressor';
 
 export function MaintainerPwaWizard() {
+  const { isOutdoorMode, toggleOutdoorMode } = useOutdoorDisplay();
   const [session, setSession] = useState<TechnicianUserSession | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'COCKPIT' | 'WIZARD'>('COCKPIT');
@@ -101,6 +111,21 @@ export function MaintainerPwaWizard() {
     isBiometricsAvailable().then((supported) => {
       setHasBiometrics(supported);
     });
+
+    // Auto-restauração da sessão a partir do cachedSession
+    const cached = getCachedSession();
+    if (cached) {
+      setSession({
+        id: cached.operator_id,
+        name: cached.operator_name,
+        email: cached.operator_email || '',
+        role: 'PISCINEIRO',
+        cpf: cached.cpf || '',
+        targetSector: cached.target_sector,
+        token: cached.cached_session_token,
+      });
+      setIsAuthenticated(true);
+    }
 
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setPushEnabled(Notification.permission === 'granted');
@@ -526,9 +551,29 @@ export function MaintainerPwaWizard() {
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Botão de Modo Outdoor High-Contrast (Sol Pleno) */}
+          <button
+            onClick={() => {
+              triggerHaptic('medium');
+              toggleOutdoorMode();
+            }}
+            className={`p-1.5 rounded-lg border transition flex items-center gap-1 text-[11px] font-bold ${
+              isOutdoorMode
+                ? 'bg-amber-400 border-amber-300 text-black shadow-md shadow-amber-500/30'
+                : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
+            }`}
+            title="Alternar Modo Outdoor Sol Pleno (Alto Contraste)"
+          >
+            <Sun className={`w-3.5 h-3.5 ${isOutdoorMode ? 'text-black' : 'text-amber-400'}`} />
+            <span className="hidden sm:inline">{isOutdoorMode ? 'Sol Ativo' : 'Sol'}</span>
+          </button>
+
           {activeTab === 'WIZARD' ? (
             <button
-              onClick={() => setActiveTab('COCKPIT')}
+              onClick={() => {
+                triggerHaptic('light');
+                setActiveTab('COCKPIT');
+              }}
               className="flex items-center gap-1 text-[11px] bg-slate-800 hover:bg-slate-750 text-cyan-300 border border-slate-700 px-2.5 py-1 rounded-lg transition"
             >
               <ArrowLeft className="w-3 h-3 text-cyan-400" />
@@ -536,7 +581,10 @@ export function MaintainerPwaWizard() {
             </button>
           ) : (
             <button
-              onClick={() => setActiveTab('WIZARD')}
+              onClick={() => {
+                triggerHaptic('light');
+                setActiveTab('WIZARD');
+              }}
               className="flex items-center gap-1 text-[11px] bg-slate-800 hover:bg-slate-750 text-cyan-300 border border-slate-700 px-2.5 py-1 rounded-lg transition"
             >
               <Compass className="w-3 h-3 text-cyan-400" />
@@ -556,9 +604,12 @@ export function MaintainerPwaWizard() {
             <Bell className="w-3.5 h-3.5" />
           </button>
 
-          {/* Trocar de Conta Demo em 1 Clique */}
+          {/* Trocar de Conta / Sair e Ir para Login */}
           <button
-            onClick={() => setIsAuthenticated(false)}
+            onClick={() => {
+              triggerHaptic('light');
+              setIsAuthenticated(false);
+            }}
             className="flex items-center gap-1 text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2 py-1 rounded-lg transition"
             title="Trocar Perfil / Sair"
           >

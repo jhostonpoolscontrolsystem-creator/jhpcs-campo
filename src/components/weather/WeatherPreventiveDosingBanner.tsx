@@ -12,6 +12,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { PoolWeatherAlert } from '@/types/weatherAlerts';
+import { triggerHaptic } from '@/lib/ui/haptics';
 
 interface WeatherPreventiveDosingBannerProps {
   alert: PoolWeatherAlert;
@@ -103,37 +104,40 @@ export function WeatherPreventiveDosingBanner({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => onToggleApplied(!isApplied)}
-        className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl border text-left transition ${
+        onClick={() => {
+          triggerHaptic(isApplied ? 'light' : 'success');
+          onToggleApplied(!isApplied);
+        }}
+        className={`w-full min-h-[54px] flex items-center justify-between gap-3 p-3.5 rounded-2xl border-2 text-left transition active:scale-[0.98] ${
           isApplied
-            ? 'bg-slate-900/95 border-emerald-500/80 text-emerald-300 ring-2 ring-emerald-500/30'
-            : 'bg-slate-950/60 border-slate-700/80 text-slate-300 hover:border-slate-500'
-        } ${disabled ? 'opacity-60 cursor-not-allowed' : 'active:scale-[0.99]'}`}
+            ? 'bg-slate-900/95 border-emerald-500 text-emerald-300 ring-2 ring-emerald-500/40 shadow-lg shadow-emerald-950/50'
+            : 'bg-slate-950/80 border-slate-700 text-slate-200 hover:border-slate-500'
+        } ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
       >
-        <div className="flex items-center gap-2.5">
-          <div className={`w-5 h-5 rounded flex items-center justify-center transition border ${
-            isApplied ? 'bg-emerald-600 border-emerald-400 text-white' : 'border-slate-600 bg-slate-800'
+        <div className="flex items-center gap-3">
+          <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition border-2 ${
+            isApplied ? 'bg-emerald-600 border-emerald-300 text-white shadow-sm' : 'border-slate-500 bg-slate-800'
           }`}>
             {isApplied ? (
-              <CheckSquare className="w-4 h-4" />
+              <CheckSquare className="w-4 h-4 stroke-[2.5]" />
             ) : (
               <Square className="w-4 h-4 text-transparent" />
             )}
           </div>
           <div>
-            <span className="text-xs font-black block">
+            <span className="text-xs font-black uppercase tracking-tight block">
               Aplicação preventiva climática realizada
             </span>
-            <span className="text-[10px] text-slate-400">
+            <span className="text-[10px] text-slate-400 font-medium">
               {isApplied
                 ? `Dosagem de ${alert.recommended_dosage}${alert.dosage_unit} confirmada no laudo técnico`
-                : 'Marque após dosar o produto para dar baixa e debitar'}
+                : 'Toque para confirmar dosagem e dar baixa de estoque'}
             </span>
           </div>
         </div>
 
         {isApplied && (
-          <span className="text-[10px] font-bold bg-emerald-950 border border-emerald-800 text-emerald-400 px-2 py-0.5 rounded-full">
+          <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-950 border border-emerald-800 text-emerald-400 px-2.5 py-1 rounded-full">
             Pronto
           </span>
         )}

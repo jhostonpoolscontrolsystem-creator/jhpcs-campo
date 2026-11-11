@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Pool } from '@/types/database';
 import { PoolWeatherAlert } from '@/types/weatherAlerts';
+import { triggerHaptic } from '@/lib/ui/haptics';
 
 interface PoolRouteCardProps {
   pool: Pool & { distanceMeters: number; visitStatus: 'CONCLUIDA' | 'RISCO' | 'PENDENTE' };
@@ -152,24 +153,30 @@ export function PoolRouteCard({
       <div className="grid grid-cols-3 gap-2 pt-1">
         <button
           type="button"
-          onClick={() => onSelectPoolToMaintain(pool.id)}
-          className={`col-span-2 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-[0.98] ${
+          onClick={() => {
+            triggerHaptic('medium');
+            onSelectPoolToMaintain(pool.id);
+          }}
+          className={`col-span-2 min-h-[52px] py-3 rounded-2xl font-black text-xs uppercase tracking-tight flex items-center justify-center gap-2 transition active:scale-[0.98] ${
             pool.visitStatus === 'CONCLUIDA'
-              ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
-              : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:opacity-95 text-white shadow-md shadow-cyan-500/20'
+              ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-2 border-slate-700'
+              : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:opacity-95 text-white shadow-lg shadow-cyan-500/25 border-2 border-cyan-400/40'
           }`}
         >
           <span>{pool.visitStatus === 'CONCLUIDA' ? 'Revisar Laudo' : 'Iniciar Atendimento'}</span>
-          <ArrowRight className="w-3.5 h-3.5" />
+          <ArrowRight className="w-4 h-4" />
         </button>
 
         <button
           type="button"
-          onClick={() => onOpenPoolReports && onOpenPoolReports(pool)}
-          className="py-2.5 rounded-xl bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-cyan-800/80 text-cyan-300 font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-[0.98]"
+          onClick={() => {
+            triggerHaptic('light');
+            if (onOpenPoolReports) onOpenPoolReports(pool);
+          }}
+          className="min-h-[52px] py-3 rounded-2xl bg-slate-950 hover:bg-slate-850 border-2 border-slate-800 hover:border-cyan-700 text-cyan-300 font-black text-xs uppercase tracking-tight flex items-center justify-center gap-1.5 transition active:scale-[0.98]"
           title="Central de Relatórios & Fechamento Mensal"
         >
-          <FileText className="w-3.5 h-3.5 text-cyan-400" />
+          <FileText className="w-4 h-4 text-cyan-400" />
           <span>Relatórios</span>
         </button>
       </div>
