@@ -8,7 +8,8 @@
 
 | Versão | Data | Status | Descrição Sumária |
 | :--- | :--- | :--- | :--- |
-| **v4.2.0** | 11/11/2026 | **Produção / Homologado** | Visão Computacional Embarcada (Edge Canvas Colorimetry): Leitura contínua de fitas 100% offline em subsolos |
+| **v4.3.0** | 11/11/2026 | **Produção / Homologado** | Visão Computacional no Edge: Inspeção de microfissuras e descontinuidade de rejuntes via Sobel 3x3 local |
+| **v4.2.0** | 11/11/2026 | **Homologado** | Visão Computacional Embarcada (Edge Canvas Colorimetry): Leitura contínua de fitas 100% offline em subsolos |
 | **v4.1.0** | 11/11/2026 | **Homologado** | Central de Relatórios & Fechamento Mensal no PWA: Dossiê WhatsApp, Lista de Químicos e Livro Sanitário Anvisa |
 | **v4.0.0** | 11/11/2026 | **Homologado** | Arquitetura Polimórfica e Modular por Perfil (SOLO, FLEET, FACILITY, ENTERPRISE JHOSTON), ISL local e Contas Demo |
 | **v3.1.0** | 11/11/2026 | **Homologado** | Cockpit do Tratador: Roteiro por proximidade Haversine, saldo móvel da caminhonete e badges de status de visita |
@@ -22,6 +23,26 @@
 ---
 
 ## 🔍 Detalhamento dos Ciclos de Evolução
+
+### [v4.3.0] — 11/11/2026 • Visão Computacional no Edge (Detecção de Microfissuras & Rejuntes)
+> **Objetivo:** Eliminar a dependência de APIs remotas para inspeção de superfícies, executando a análise pericial de trincas, rejuntes e eflorescência diretamente no dispositivo móvel do técnico.
+
+#### 1. Motor de Detecção Estrutural no Edge (`src/lib/vision/edgeSurfaceInspector.ts`)
+- **Convolução de Gradiente Sobel 3x3**:
+  * Executa operadores de gradiente $G_x$ e $G_y$ sobre a matriz de luminância para calcular a magnitude de bordas finas anômalas.
+  * Identifica descontinuidades mecânicas, trincas estruturais e destacamento de pastilhas.
+- **Detecção Espectral de Eflorescência Cálcica**:
+  * Amostra a dispersão de pixels esbranquiçados de alto brilho e baixo contraste cromático indicativos de lixiviação de carbonato de cálcio.
+- **Geração de Máscara de Realce Visual (Overlay)**:
+  * Desenha sobre a fotografia original um overlay ciano neon destacando os caminhos de trinca para validação visual imediata pelo tratador.
+
+#### 2. Modal de Inspeção Polimórfico (`src/components/SurfaceAiInspectorModal.tsx`)
+- Seletor de modo com suporte duplo:
+  * **Edge Local (100% Offline)**: Processamento instantâneo via hardware local (Canvas/WASM/GPU).
+  * **Nuvem Remota (Gemini Multimodal)**: Fallback quando houver conexão 4G/Wi-Fi disponível.
+- Parecer pericial automático com prescrição de reparo e vinculação direta ao prontuário da piscina.
+
+---
 
 ### [v4.2.0] — 11/11/2026 • Visão Computacional Embarcada (Edge Canvas Colorimetry)
 > **Objetivo:** Permitir ao tratador apontar a câmera do celular para a fita reagente ou cubeta e extrair automaticamente os valores de Cloro Livre, pH e Alcalinidade diretamente no hardware local, mesmo 100% offline em subsolos ou casas de máquinas blindadas.

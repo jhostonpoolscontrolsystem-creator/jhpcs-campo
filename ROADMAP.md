@@ -85,11 +85,15 @@ timeline
 - [x] **Aderência Offline com Alerta Elegante**:
   - Detecção de rede com notificação para sincronização de fotos da nuvem.
 
-### 🔬 Fase 8: Visão Computacional Embarcada (Edge Colorimetry) (CONCLUÍDO - v4.2)
+### 🔬 Fase 8: Visão Computacional Embarcada no Edge (CONCLUÍDO - v4.2 / v4.3)
 - [x] **Leitura Espectral Direta no Canvas (`colorimetryEngine.ts`)**:
   - Processamento de pixels em tempo real via câmera sem chamada de IA na nuvem.
   - Amostragem RGB/HSV nas 3 almofadas da fita analítica (Cloro Livre, pH e Alcalinidade).
   - Algoritmo de interpolação espectral e rejeição de reflexos especulares.
+- [x] **Inspeção de Rejuntes & Microfissuras no Edge (`edgeSurfaceInspector.ts`)**:
+  - Convolução de gradiente Sobel 3x3 para detecção de descontinuidades de rejunte e fissuras lineares.
+  - Análise espectral de eflorescência cálcica (carbonato lixiviado) 100% offline.
+  - Máscara visual de realce em ciano neon com laudo pericial integrado.
 - [x] **Visor HUD de Fitas com Freeze (`AiStripScannerModal.tsx`)**:
   - Enquadramento com guias das almofadas da fita e preenchimento automático no formulário.
 
