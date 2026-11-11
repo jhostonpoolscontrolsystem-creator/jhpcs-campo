@@ -36,8 +36,12 @@ import {
   removeOfflineLog,
   saveTechnicianProfile,
   getTechnicianProfile,
+  getPredictiveAlertsOffline,
+  acknowledgeAlertOffline,
   MaintenanceLogPayload 
 } from '@/lib/offline-db';
+import { runFullOfflineSync } from '@/lib/offline/syncEngine';
+import { PoolWeatherAlert } from '@/types/weatherAlerts';
 import { requestNotificationPermission } from '@/lib/firebase';
 import { isBiometricsAvailable, authenticateWithBiometrics } from '@/lib/auth/webauthn';
 import { compressImageToUltraLightWebP } from '@/lib/image-compressor';
@@ -70,6 +74,10 @@ export function MaintainerPwaWizard() {
   // Central de Relatórios e Fechamento Mensal
   const [isReportsDrawerOpen, setIsReportsDrawerOpen] = useState<boolean>(false);
   const [selectedReportPool, setSelectedReportPool] = useState<Pool | null>(null);
+
+  // Alertas Meteorológicos Preditivos (48h)
+  const [activeWeatherAlert, setActiveWeatherAlert] = useState<PoolWeatherAlert | undefined>(undefined);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // Estados de Login
   const [loginMethod, setLoginMethod] = useState<'DEMO' | 'CPF_PIN'>('DEMO');
@@ -132,6 +140,22 @@ export function MaintainerPwaWizard() {
     }
   }, [selectedPoolId]);
 
+  // Carregar Alerta Meteorológico Preditivo para a piscina selecionada no IndexedDB
+  useEffect(() => {
+    async function loadAlertForSelectedPool() {
+      try {
+        const alerts = await getPredictiveAlertsOffline(selectedPoolId);
+        const valid = alerts.find(
+          (a) => !a.acknowledged && new Date(a.valid_until).getTime() > Date.now()
+        );
+        setActiveWeatherAlert(valid);
+      } catch (err) {
+        console.warn('Erro ao carregar alertas preditivos para a piscina:', err);
+      }
+    }
+    loadAlertForSelectedPool();
+  }, [selectedPoolId]);
+
   const checkOfflineQueue = async () => {
     try {
       const logs = await getPendingOfflineLogs();
@@ -143,26 +167,23 @@ export function MaintainerPwaWizard() {
 
   const syncOfflineQueue = async () => {
     if (!navigator.onLine) return;
+    setIsSyncing(true);
     try {
-      const pending = await getPendingOfflineLogs();
-      if (pending.length === 0) return;
-
-      console.log(`[JHPCS Sync] Transmitindo ${pending.length} laudos retidos no IndexedDB...`);
-
-      for (const log of pending) {
-        const res = await fetch('/api/maintenance/submit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(log),
-        });
-
-        if (res.ok) {
-          await removeOfflineLog(log.id);
-        }
-      }
+      // Sincronização completa de ponta a ponta: logs pendentes + alertas preditivos 48h
+      const syncResult = await runFullOfflineSync();
+      console.log('[JHPCS Sync Engine Resultado]:', syncResult);
       await checkOfflineQueue();
+
+      // Recarregar alertas para a piscina ativa
+      const alerts = await getPredictiveAlertsOffline(selectedPoolId);
+      const valid = alerts.find(
+        (a) => !a.acknowledged && new Date(a.valid_until).getTime() > Date.now()
+      );
+      setActiveWeatherAlert(valid);
     } catch (err) {
       console.error('[JHPCS Sync Error]:', err);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -332,6 +353,12 @@ export function MaintainerPwaWizard() {
     } else {
       await saveOfflineMaintenanceLog(fullPayload);
       await checkOfflineQueue();
+    }
+
+    // Se houve alerta preditivo climáticodo Core referenciado, dar baixa local no IndexedDB
+    if (logData.acknowledgedAlertId) {
+      await acknowledgeAlertOffline(logData.acknowledgedAlertId);
+      setActiveWeatherAlert(undefined);
     }
   };
 
@@ -624,6 +651,7 @@ export function MaintainerPwaWizard() {
               technicianWhatsapp={technicianWhatsapp}
               currentGps={currentGps}
               isOnline={isOnline}
+              activeAlert={activeWeatherAlert}
               onSubmit={handleFormSubmit}
               onBackToCockpit={() => setActiveTab('COCKPIT')}
             />
@@ -635,6 +663,7 @@ export function MaintainerPwaWizard() {
               technicianName={session?.name || 'Técnico de Frota'}
               currentGps={currentGps}
               isOnline={isOnline}
+              activeAlert={activeWeatherAlert}
               onSubmit={handleFormSubmit}
               onBackToCockpit={() => setActiveTab('COCKPIT')}
             />
@@ -646,6 +675,7 @@ export function MaintainerPwaWizard() {
               operatorName={session?.name || 'Operador Sanitário'}
               currentGps={currentGps}
               isOnline={isOnline}
+              activeAlert={activeWeatherAlert}
               onSubmit={handleFormSubmit}
               onBackToCockpit={() => setActiveTab('COCKPIT')}
             />
@@ -657,6 +687,7 @@ export function MaintainerPwaWizard() {
               auditorName={session?.name || 'Auditor Jhoston'}
               currentGps={currentGps}
               isOnline={isOnline}
+              activeAlert={activeWeatherAlert}
               onSubmit={handleFormSubmit}
               onBackToCockpit={() => setActiveTab('COCKPIT')}
             />

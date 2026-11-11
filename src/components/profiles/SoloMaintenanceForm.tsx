@@ -19,6 +19,8 @@ import { Pool } from '@/types/database';
 import { PoolSubstrateType, SUBSTRATE_PROFILES } from '@/lib/substrate-rules';
 import { calculateLangelierIndex } from '@/lib/chemistry/islEngine';
 import { MaintenanceLogPayload } from '@/lib/offline-db';
+import { PoolWeatherAlert } from '@/types/weatherAlerts';
+import { WeatherPreventiveDosingBanner } from '@/components/weather/WeatherPreventiveDosingBanner';
 import { NativeCameraCapture } from '@/components/NativeCameraCapture';
 import AiStripScannerModal from '@/components/AiStripScannerModal';
 
@@ -28,6 +30,7 @@ interface SoloMaintenanceFormProps {
   technicianWhatsapp: string;
   currentGps: { lat: number; lng: number };
   isOnline: boolean;
+  activeAlert?: PoolWeatherAlert;
   onSubmit: (log: Partial<MaintenanceLogPayload>) => Promise<void>;
   onBackToCockpit: () => void;
 }
@@ -38,12 +41,16 @@ export function SoloMaintenanceForm({
   technicianWhatsapp,
   currentGps,
   isOnline,
+  activeAlert,
   onSubmit,
   onBackToCockpit,
 }: SoloMaintenanceFormProps) {
   const [substrateType, setSubstrateType] = useState<PoolSubstrateType>(
     (pool.finish_type as any) || 'MONOLITICO_SAND'
   );
+
+  // Alerta Climático Preditivo (48h)
+  const [preventiveApplied, setPreventiveApplied] = useState<boolean>(false);
 
   const [phInput, setPhInput] = useState<number>(7.4);
   const [chlorineInput, setChlorineInput] = useState<number>(2.0);
@@ -96,6 +103,8 @@ export function SoloMaintenanceForm({
         gps_lng: currentGps.lng,
         white_label_brand: brandName,
         white_label_whatsapp: technicianWhatsapp,
+        acknowledgedAlertId: activeAlert?.id,
+        preventiveApplicationDone: activeAlert ? preventiveApplied : undefined,
         evidences: [
           ...(panoramicPhoto ? [{
             evidence_type: 'FOTO_PISCINA_PANORAMICA',
@@ -134,8 +143,11 @@ export function SoloMaintenanceForm({
     text += `• Diagnóstico ISL: ${islResult.statusLabel} (ISL ${islResult.isl > 0 ? '+' : ''}${islResult.isl})\n\n`;
     text += `🧹 *Serviços Realizados:*\n`;
     text += `• Escovação das paredes e fundo: ${brushedSurface ? '✅ Sim' : '❌ Não'}\n`;
-    text += `• Retrolavagem do filtro: ${backwashedFilter ? '✅ Sim' : '➖ Não necessária'}\n\n`;
-    text += `✨ *Sua piscina está 100% balanceada e liberada para o banho!*\n`;
+    text += `• Retrolavagem do filtro: ${backwashedFilter ? '✅ Sim' : '➖ Não necessária'}\n`;
+    if (activeAlert && preventiveApplied) {
+      text += `• Aplicação Preventiva Climática: ✅ Realizada (${activeAlert.recommended_chemical_name} - ${activeAlert.recommended_dosage}${activeAlert.dosage_unit})\n`;
+    }
+    text += `\n✨ *Sua piscina está 100% balanceada e liberada para o banho!*\n`;
     text += `🛡️ _Auditoria Técnica & Certificação Química JHPCS Engine_`;
     if (technicianWhatsapp) {
       text += `\n📲 Contato do Tratador: ${technicianWhatsapp}`;
@@ -204,6 +216,15 @@ export function SoloMaintenanceForm({
           </span>
         </div>
       </div>
+
+      {/* Card Preditivo Meteorológico 48h (se houver alerta ativo) */}
+      {activeAlert && !activeAlert.acknowledged && (
+        <WeatherPreventiveDosingBanner
+          alert={activeAlert}
+          isApplied={preventiveApplied}
+          onToggleApplied={setPreventiveApplied}
+        />
+      )}
 
       {/* Seletor de Substrato com Badges */}
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-2.5">

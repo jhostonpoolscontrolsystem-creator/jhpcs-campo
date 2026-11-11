@@ -23,6 +23,8 @@ import { calculateLangelierIndex } from '@/lib/chemistry/islEngine';
 import { OFFLINE_CHEMICAL_CATALOG } from '@/lib/fiscal/offlineFiscalCatalog';
 import { AppliedProductPayload, MaintenanceLogPayload } from '@/lib/offline-db';
 import { calculateHaversineDistance, DEFAULT_GEOFENCE_RADIUS_METERS } from '@/lib/geo/geofencing';
+import { PoolWeatherAlert } from '@/types/weatherAlerts';
+import { WeatherPreventiveDosingBanner } from '@/components/weather/WeatherPreventiveDosingBanner';
 import { CanvasSignatureModal } from '@/components/CanvasSignatureModal';
 import { NativeCameraCapture } from '@/components/NativeCameraCapture';
 
@@ -31,6 +33,7 @@ interface FleetMaintenanceFormProps {
   technicianName: string;
   currentGps: { lat: number; lng: number };
   isOnline: boolean;
+  activeAlert?: PoolWeatherAlert;
   onSubmit: (log: Partial<MaintenanceLogPayload>) => Promise<void>;
   onBackToCockpit: () => void;
 }
@@ -40,12 +43,16 @@ export function FleetMaintenanceForm({
   technicianName,
   currentGps,
   isOnline,
+  activeAlert,
   onSubmit,
   onBackToCockpit,
 }: FleetMaintenanceFormProps) {
   const [substrateType, setSubstrateType] = useState<PoolSubstrateType>(
     (pool.finish_type as any) || 'MONOLITICO_SAND'
   );
+
+  // Alerta Climático Preditivo (48h)
+  const [preventiveApplied, setPreventiveApplied] = useState<boolean>(false);
 
   // Parâmetros Químicos
   const [phInput, setPhInput] = useState<number>(7.4);
@@ -141,6 +148,32 @@ export function FleetMaintenanceForm({
       return;
     }
 
+    // Se aplicação preventiva climática foi confirmada, incluir automaticamente na baixa estequiométrica da caminhonete
+    let finalProductsApplied = [...productsApplied];
+    if (activeAlert && preventiveApplied) {
+      const alreadyIncluded = finalProductsApplied.some(
+        (p) => p.sku === activeAlert.recommended_chemical_sku
+      );
+      if (alreadyIncluded) {
+        finalProductsApplied = finalProductsApplied.map((p) =>
+          p.sku === activeAlert.recommended_chemical_sku
+            ? { ...p, quantityUsed: p.quantityUsed + activeAlert.recommended_dosage }
+            : p
+        );
+      } else {
+        const catalogItem = OFFLINE_CHEMICAL_CATALOG.find(
+          (c) => c.sku === activeAlert.recommended_chemical_sku
+        );
+        finalProductsApplied.push({
+          sku: activeAlert.recommended_chemical_sku,
+          name: activeAlert.recommended_chemical_name,
+          quantityUsed: activeAlert.recommended_dosage,
+          unidade: (catalogItem?.unidade || activeAlert.dosage_unit || 'KG') as 'KG' | 'L' | 'UN',
+          precoPadraoBrl: catalogItem?.precoPadraoBrl || 20.0,
+        });
+      }
+    }
+
     setSubmitting(true);
     try {
       await onSubmit({
@@ -164,7 +197,9 @@ export function FleetMaintenanceForm({
         geofence_justification: geofenceJustification || undefined,
         signature_data_url: signatureDataUrl || undefined,
         signatory_name: signatoryName || undefined,
-        productsApplied,
+        productsApplied: finalProductsApplied,
+        acknowledgedAlertId: activeAlert?.id,
+        preventiveApplicationDone: activeAlert ? preventiveApplied : undefined,
         evidences: [
           ...(panoramicPhoto ? [{
             evidence_type: 'FOTO_PISCINA_PANORAMICA',
@@ -263,6 +298,15 @@ export function FleetMaintenanceForm({
           </div>
         )}
       </div>
+
+      {/* Card Preditivo Meteorológico 48h (se houver alerta ativo) */}
+      {activeAlert && !activeAlert.acknowledged && (
+        <WeatherPreventiveDosingBanner
+          alert={activeAlert}
+          isApplied={preventiveApplied}
+          onToggleApplied={setPreventiveApplied}
+        />
+      )}
 
       {/* Substrato da Piscina */}
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-2.5">

@@ -8,7 +8,8 @@
 
 | Versão | Data | Status | Descrição Sumária |
 | :--- | :--- | :--- | :--- |
-| **v4.4.0** | 11/11/2026 | **Produção / Homologado** | Leitura Colorimétrica de Tubos de Ensaio (Estojo Comparador Líquido de Cloro/pH) 100% Offline |
+| **v4.5.0** | 11/11/2026 | **Produção / Homologado** | Alertas Meteorológicos Preditivos (48h): Sincronização offline, badges de risco e dosagem preventiva |
+| **v4.4.0** | 11/11/2026 | **Homologado** | Leitura Colorimétrica de Tubos de Ensaio (Estojo Comparador Líquido de Cloro/pH) 100% Offline |
 | **v4.3.0** | 11/11/2026 | **Homologado** | Visão Computacional no Edge: Inspeção de microfissuras e descontinuidade de rejuntes via Sobel 3x3 local |
 | **v4.2.0** | 11/11/2026 | **Homologado** | Visão Computacional Embarcada (Edge Canvas Colorimetry): Leitura contínua de fitas 100% offline em subsolos |
 | **v4.1.0** | 11/11/2026 | **Homologado** | Central de Relatórios & Fechamento Mensal no PWA: Dossiê WhatsApp, Lista de Químicos e Livro Sanitário Anvisa |
@@ -24,6 +25,30 @@
 ---
 
 ## 🔍 Detalhamento dos Ciclos de Evolução
+
+### [v4.5.0] — 11/11/2026 • Alertas Meteorológicos Preditivos (48h) & Dosagem Estequiométrica Preventiva
+> **Objetivo:** Consumir os alertas meteorológicos preditivos (48h) gerados pelo Core (`GET /api/v1/pwa/weather-alerts`) na rotina de sincronização offline do PWA, salvando no IndexedDB e instruindo dosagens preventivas automáticas com baixa estequiométrica de estoque.
+
+#### 1. Sincronização Offline no IndexedDB (`src/lib/offline/syncEngine.ts` & `src/lib/offline-db.ts`)
+- Criação da store local `predictive_alerts` no IndexedDB (DB versão 3).
+- O PWA nunca consulta a OpenWeather ou provedores externos diretamente; ele consome unicamente os dados tratados e homologados pelo Core v6.0.
+- Função `runFullOfflineSync()` orquestra a transmissão dos laudos retidos e o download/cache dos alertas ativos com janela temporal de 48 horas.
+- Função `acknowledgeAlertOffline(alertId)` registra a baixa local do alerta no banco embarcado.
+
+#### 2. Badges de Alerta Preditivo no Card da Piscina (`src/components/pools/PoolRouteCard.tsx`)
+- Se a piscina possuir alerta preditivo não concluído e dentro da validade (`valid_until > now`):
+  * `⛈️ Alerta Chuva Ácida (48h)` (gradiente âmbar/laranja) para `ACID_RAIN_BUFFER`.
+  * `🦠 Risco de Algas / Calor (48h)` (gradiente verde-limão) para `ALGAE_BLOOM_PREVENTION`.
+  * `🛡️ Proteção de Cura Jhoston` (gradiente vermelho/crítico) para `CURING_PROTECTION`.
+
+#### 3. Banner & Checkbox de Aplicação Preventiva nos Formulários (`WeatherPreventiveDosingBanner.tsx`)
+- Card no topo dos formulários polimórficos (`SoloMaintenanceForm`, `FleetMaintenanceForm`, `FacilityMaintenanceForm`, `EnterpriseMaintenanceForm`):
+  * Exibe evento meteorológico, janela temporal (ex: "Volume est: 45mm") e a instrução técnica exata (ex: *"Aplicar +900g de Bicarbonato de Sódio preventivamente antes da tempestade"*).
+  * Checkbox interativo com 1 toque: `[x] Aplicação preventiva climática realizada`.
+  * Ao submeter, inclui `acknowledgedAlertId` e `preventiveApplicationDone` no payload da vistoria.
+  * **No Modo FLEET (Frota Comercial)**: Ao marcar a aplicação preventiva, o PWA soma automaticamente o insumo químico na baixa estequiométrica do estoque da caminhonete (`productsApplied`), garantindo conciliação fiscal e física do veículo.
+
+---
 
 ### [v4.4.0] — 11/11/2026 • Leitura Colorimétrica de Tubos de Ensaio (Estojo Comparador Líquido)
 > **Objetivo:** Estender a visão computacional local para suportar estojos de teste tradicionais por tubos de ensaio cilíndricos com reagente líquido (Vermelho de Fenol e Ortotolidina/DPD líquido), muito comuns no dia a dia dos tratadores.

@@ -20,6 +20,8 @@ import { Pool } from '@/types/database';
 import { PoolSubstrateType, SUBSTRATE_PROFILES } from '@/lib/substrate-rules';
 import { calculateLangelierIndex } from '@/lib/chemistry/islEngine';
 import { MaintenanceLogPayload } from '@/lib/offline-db';
+import { PoolWeatherAlert } from '@/types/weatherAlerts';
+import { WeatherPreventiveDosingBanner } from '@/components/weather/WeatherPreventiveDosingBanner';
 import { NativeCameraCapture } from '@/components/NativeCameraCapture';
 import { MachineRoomScannerModal } from '@/components/MachineRoomScannerModal';
 
@@ -28,6 +30,7 @@ interface EnterpriseMaintenanceFormProps {
   auditorName: string;
   currentGps: { lat: number; lng: number };
   isOnline: boolean;
+  activeAlert?: PoolWeatherAlert;
   onSubmit: (log: Partial<MaintenanceLogPayload>) => Promise<void>;
   onBackToCockpit: () => void;
 }
@@ -37,11 +40,15 @@ export function EnterpriseMaintenanceForm({
   auditorName,
   currentGps,
   isOnline,
+  activeAlert,
   onSubmit,
   onBackToCockpit,
 }: EnterpriseMaintenanceFormProps) {
   // Substrato Monolítico Areia de Quartzo Obrigatório para Auditoria Decenal
   const [substrateType, setSubstrateType] = useState<PoolSubstrateType>('MONOLITICO_SAND');
+
+  // Alerta Climático Preditivo (48h)
+  const [preventiveApplied, setPreventiveApplied] = useState<boolean>(false);
 
   // Scanner Plaqueta CNC Laser
   const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
@@ -114,6 +121,8 @@ export function EnterpriseMaintenanceForm({
         liability_accepted: true,
         gps_lat: currentGps.lat,
         gps_lng: currentGps.lng,
+        acknowledgedAlertId: activeAlert?.id,
+        preventiveApplicationDone: activeAlert ? preventiveApplied : undefined,
         evidences: [
           ...(panoramicPhoto ? [{
             evidence_type: 'FOTO_MONOLITO_AREIA_PANORAMICA',
@@ -178,6 +187,15 @@ export function EnterpriseMaintenanceForm({
           </div>
         </div>
       </div>
+
+      {/* Card Preditivo Meteorológico 48h (se houver alerta ativo) */}
+      {activeAlert && !activeAlert.acknowledged && (
+        <WeatherPreventiveDosingBanner
+          alert={activeAlert}
+          isApplied={preventiveApplied}
+          onToggleApplied={setPreventiveApplied}
+        />
+      )}
 
       {/* Leitor Rápido de QR Code / Plaqueta Metálica CNC */}
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-2.5">

@@ -1,5 +1,6 @@
 import { openDB, DBSchema } from 'idb';
 import { PoolSubstrateType } from './substrate-rules';
+import { PoolWeatherAlert } from '@/types/weatherAlerts';
 
 export interface AppliedProductPayload {
   sku: string;
@@ -30,6 +31,10 @@ export interface MaintenanceLogPayload {
   bathers_count?: number;
   filter_pressure_psi?: number;
   prefilter_cleaned?: boolean;
+
+  // Alerta Meteorológico Preditivo 48h
+  acknowledgedAlertId?: string;
+  preventiveApplicationDone?: boolean;
 
   // Modo Fabricante / Garantia Jhoston
   machine_room_tag?: string;
@@ -80,10 +85,14 @@ interface JHPCSOfflineDB extends DBSchema {
       updated_at: string;
     };
   };
+  predictive_alerts: {
+    key: string;
+    value: PoolWeatherAlert;
+  };
 }
 
 const DB_NAME = 'jhpcs-offline-store';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export async function getOfflineDB() {
   return openDB<JHPCSOfflineDB>(DB_NAME, DB_VERSION, {
@@ -93,6 +102,9 @@ export async function getOfflineDB() {
       }
       if (!db.objectStoreNames.contains('technician_profile')) {
         db.createObjectStore('technician_profile', { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains('predictive_alerts')) {
+        db.createObjectStore('predictive_alerts', { keyPath: 'id' });
       }
     },
   });
@@ -124,8 +136,55 @@ export async function removeOfflineLog(id: string) {
 }
 
 /**
- * Salva o perfil comercial do tratador (White-Label)
+ * Salva alertas meteorológicos preditivos no IndexedDB
  */
+export async function savePredictiveAlertsOffline(alerts: PoolWeatherAlert[]) {
+  const db = await getOfflineDB();
+  const tx = db.transaction('predictive_alerts', 'readwrite');
+  for (const alert of alerts) {
+    await tx.store.put(alert);
+  }
+  await tx.done;
+}
+
+/**
+ * Retorna todos os alertas meteorológicos preditivos válidos armazenados no IndexedDB
+ */
+export async function getPredictiveAlertsOffline(poolId?: string): Promise<PoolWeatherAlert[]> {
+  try {
+    const db = await getOfflineDB();
+    const allAlerts = await db.getAll('predictive_alerts');
+    const now = new Date();
+
+    return allAlerts.filter((a) => {
+      const isValid = new Date(a.valid_until) > now && !a.acknowledged;
+      if (poolId) {
+        return isValid && a.pool_id === poolId;
+      }
+      return isValid;
+    });
+  } catch (err) {
+    console.warn('Erro ao ler alertas preditivos do IndexedDB:', err);
+    return [];
+  }
+}
+
+/**
+ * Marca um alerta como concluído/reconhecido localmente após vistoria
+ */
+export async function acknowledgeAlertOffline(alertId: string) {
+  try {
+    const db = await getOfflineDB();
+    const alert = await db.get('predictive_alerts', alertId);
+    if (alert) {
+      alert.acknowledged = true;
+      alert.acknowledged_at = new Date().toISOString();
+      await db.put('predictive_alerts', alert);
+    }
+  } catch (err) {
+    console.warn('Erro ao marcar alerta offline como concluído:', err);
+  }
+}
 export async function saveTechnicianProfile(brandName: string, whatsapp: string, pixKey?: string, monthlyPriceBrl?: number) {
   try {
     const db = await getOfflineDB();

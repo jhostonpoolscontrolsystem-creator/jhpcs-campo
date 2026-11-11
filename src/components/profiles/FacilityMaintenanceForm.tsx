@@ -21,6 +21,8 @@ import { Pool } from '@/types/database';
 import { PoolSubstrateType, SUBSTRATE_PROFILES } from '@/lib/substrate-rules';
 import { calculateLangelierIndex } from '@/lib/chemistry/islEngine';
 import { MaintenanceLogPayload } from '@/lib/offline-db';
+import { PoolWeatherAlert } from '@/types/weatherAlerts';
+import { WeatherPreventiveDosingBanner } from '@/components/weather/WeatherPreventiveDosingBanner';
 import { NativeCameraCapture } from '@/components/NativeCameraCapture';
 
 interface FacilityMaintenanceFormProps {
@@ -28,6 +30,7 @@ interface FacilityMaintenanceFormProps {
   operatorName: string;
   currentGps: { lat: number; lng: number };
   isOnline: boolean;
+  activeAlert?: PoolWeatherAlert;
   onSubmit: (log: Partial<MaintenanceLogPayload>) => Promise<void>;
   onBackToCockpit: () => void;
 }
@@ -37,12 +40,16 @@ export function FacilityMaintenanceForm({
   operatorName,
   currentGps,
   isOnline,
+  activeAlert,
   onSubmit,
   onBackToCockpit,
 }: FacilityMaintenanceFormProps) {
   const [substrateType, setSubstrateType] = useState<PoolSubstrateType>(
     (pool.finish_type as any) || 'PASTILHA_CERAMICA'
   );
+
+  // Alerta Climático Preditivo (48h)
+  const [preventiveApplied, setPreventiveApplied] = useState<boolean>(false);
 
   // NBR 10.818: Seletor de Turno
   const [shift, setShift] = useState<'MANHA' | 'TARDE' | 'NOITE'>('MANHA');
@@ -108,6 +115,8 @@ export function FacilityMaintenanceForm({
         liability_accepted: true,
         gps_lat: currentGps.lat,
         gps_lng: currentGps.lng,
+        acknowledgedAlertId: activeAlert?.id,
+        preventiveApplicationDone: activeAlert ? preventiveApplied : undefined,
         evidences: [
           ...(panoramicPhoto ? [{
             evidence_type: 'FOTO_PISCINA_PANORAMICA',
@@ -172,6 +181,15 @@ export function FacilityMaintenanceForm({
           </div>
         </div>
       </div>
+
+      {/* Card Preditivo Meteorológico 48h (se houver alerta ativo) */}
+      {activeAlert && !activeAlert.acknowledged && (
+        <WeatherPreventiveDosingBanner
+          alert={activeAlert}
+          isApplied={preventiveApplied}
+          onToggleApplied={setPreventiveApplied}
+        />
+      )}
 
       {/* Alerta Crítico Sanitário ANVISA NBR 10.818 */}
       {isChlorineCritical && (

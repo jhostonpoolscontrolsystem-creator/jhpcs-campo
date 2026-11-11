@@ -99,6 +99,10 @@ timeline
   - Máscara visual de realce em ciano neon com laudo pericial integrado.
 - [x] **Visor HUD de Fitas com Freeze (`AiStripScannerModal.tsx`)**:
   - Enquadramento com guias das almofadas da fita e preenchimento automático no formulário.
+- [x] **Alertas Meteorológicos Preditivos (48h) & Dosagem Estequiométrica Preventiva**:
+  - Sincronização offline no IndexedDB (`predictive_alerts`) sem consulta direta a APIs meteorológicas de terceiros.
+  - Badges informativos nos cards da rota: Chuva Ácida (`ACID_RAIN_BUFFER`), Risco de Algas (`ALGAE_BLOOM_PREVENTION`) e Proteção de Cura (`CURING_PROTECTION`).
+  - Banner de dosagem preventiva com checkbox nos formulários e baixa automática no estoque do caminhão no modo FLEET.
 
 ### 🔮 Fase 9: Próximos Passos (Q1 2027)
 - [ ] **Integração Waze / Google Maps Navigation**:
