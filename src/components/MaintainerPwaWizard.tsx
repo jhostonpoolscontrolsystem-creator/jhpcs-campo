@@ -51,6 +51,7 @@ import {
   clearCachedSession,
   CachedSessionMetadata 
 } from '@/lib/auth/cachedSession';
+import { UnifiedLoginForm } from '@/components/auth/UnifiedLoginForm';
 import { requestNotificationPermission } from '@/lib/firebase';
 import { isBiometricsAvailable, authenticateWithBiometrics } from '@/lib/auth/webauthn';
 import { compressImageToUltraLightWebP } from '@/lib/image-compressor';
@@ -395,132 +396,20 @@ export function MaintainerPwaWizard() {
   };
 
   // =========================================================================
-  // TELA DE LOGIN POLIMÓRFICA (Com Seletor Rápido de Contas Demo)
+  // TELA DE LOGIN UNIFICADA (Precision PoolTech + Resiliência Offline)
   // =========================================================================
   if (!isAuthenticated) {
     return (
-      <div className="max-w-md mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-2xl animate-fadeIn">
-        <div className="text-center space-y-2">
-          <div className="h-14 w-14 mx-auto rounded-2xl bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400 shadow-lg shadow-cyan-500/20">
-            <Lock className="w-7 h-7" />
-          </div>
-          <h3 className="text-xl font-black text-white">JHPCS Campo • Acesso</h3>
-          <p className="text-xs text-slate-400">PWA Polimórfico • Escolha seu perfil ou entre com credenciais</p>
-        </div>
-
-        {/* Abas: Contas Demo x CPF/PIN */}
-        <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 text-xs font-bold">
-          <button
-            type="button"
-            onClick={() => setLoginMethod('DEMO')}
-            className={`py-2 rounded-xl transition flex items-center justify-center gap-1.5 ${
-              loginMethod === 'DEMO'
-                ? 'bg-cyan-500 text-slate-950 shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Contas Demo (1-Click)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setLoginMethod('CPF_PIN')}
-            className={`py-2 rounded-xl transition flex items-center justify-center gap-1.5 ${
-              loginMethod === 'CPF_PIN'
-                ? 'bg-cyan-500 text-slate-950 shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <User className="w-3.5 h-3.5" />
-            <span>CPF & PIN</span>
-          </button>
-        </div>
-
-        {loginMethod === 'DEMO' ? (
-          <div className="space-y-2.5">
-            <p className="text-[11px] text-slate-400 font-medium">
-              Selecione um dos 4 perfis arquiteturais para testar a interface polimórfica:
-            </p>
-
-            {DEMO_ACCOUNTS.map((acc) => (
-              <button
-                key={acc.email}
-                type="button"
-                disabled={loggingIn}
-                onClick={() => handleSelectDemoAccount(acc)}
-                className={`w-full p-3.5 rounded-2xl border text-left transition hover:scale-[1.01] active:scale-[0.99] flex flex-col justify-between space-y-1.5 ${acc.badgeColor} bg-slate-950/70 hover:bg-slate-950`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs uppercase tracking-wider text-white">
-                    {acc.sectorLabel}
-                  </span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/40 text-cyan-300">
-                    {acc.email}
-                  </span>
-                </div>
-                <div className="text-[11px] text-slate-300 font-semibold">{acc.name}</div>
-                <p className="text-[10px] text-slate-400 leading-snug">{acc.description}</p>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <form onSubmit={handleCpfLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                CPF do Tratador:
-              </label>
-              <input
-                type="text"
-                required
-                value={cpf}
-                onChange={(e) => setCpf(e.target.value)}
-                placeholder="000.000.000-00"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                PIN de 4 Dígitos:
-              </label>
-              <input
-                type="password"
-                required
-                maxLength={6}
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="••••"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-center text-xl tracking-[0.5em] text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono"
-              />
-            </div>
-
-            {authError && (
-              <div className="p-3 bg-red-950/60 border border-red-800 rounded-xl text-xs text-red-200">
-                {authError}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loggingIn}
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-extrabold text-sm shadow-lg shadow-cyan-500/20 hover:opacity-95 transition disabled:opacity-50"
-            >
-              {loggingIn ? 'Validando Acesso...' : 'Acessar com PIN'}
-            </button>
-
-            {hasBiometrics && (
-              <button
-                type="button"
-                onClick={handleBiometricLogin}
-                disabled={biometricLoading}
-                className="w-full py-3 rounded-xl bg-slate-950 hover:bg-slate-800 border border-cyan-800/60 text-cyan-300 font-bold text-xs flex items-center justify-center gap-2 transition"
-              >
-                <Fingerprint className="w-4 h-4 text-cyan-400" />
-                <span>{biometricLoading ? 'Lendo Biometria...' : 'Acessar com Biometria (Touch / Face ID)'}</span>
-              </button>
-            )}
-          </form>
-        )}
+      <div className="w-full max-w-md mx-auto animate-fadeIn">
+        <UnifiedLoginForm
+          onLoginSuccess={(newSession) => {
+            setSession(newSession);
+            setIsAuthenticated(true);
+            if (newSession.targetSector === 'AUTONOMO') {
+              setBrandName('Silva Piscinas Pro');
+            }
+          }}
+        />
       </div>
     );
   }
