@@ -41,6 +41,8 @@ export interface Pool {
   application_date: string;
   status: PoolStatus;
   created_at: string;
+  finish_type?: string;
+  substrate_type?: string;
   owner?: User;
   // Campos de Assinatura & Degustação VIP
   subscription_tier?: SubscriptionTier;

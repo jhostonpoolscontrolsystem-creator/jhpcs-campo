@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { uploadToR2, isR2Configured } from '@/lib/r2';
 import { supabase } from '@/lib/supabase';
 
 export async function POST(request: Request) {
@@ -23,21 +24,39 @@ export async function POST(request: Request) {
     const fileExt = file.name.split('.').pop() || 'jpg';
     const fileName = `${poolId}/${Date.now()}_${evidenceType}.${fileExt}`;
     const fileBuffer = Buffer.from(await file.arrayBuffer());
+    const contentType = file.type || 'image/jpeg';
 
-    // Upload direto para o bucket 'service_evidences'
+    // 1. PRIORIDADE MÁXIMA: Upload no Cloudflare R2 (Custo Zero & Egress Grátis)
+    if (isR2Configured) {
+      try {
+        const r2Result = await uploadToR2(fileName, fileBuffer, contentType);
+        return NextResponse.json({
+          success: true,
+          provider: 'CLOUDFLARE_R2',
+          photo_url: r2Result.url,
+          size_bytes: file.size,
+          evidence_type: evidenceType,
+          key: r2Result.key,
+        });
+      } catch (r2Err: any) {
+        console.warn('⚠️ Falha no upload Cloudflare R2, acionando fallback Supabase Storage:', r2Err.message);
+      }
+    }
+
+    // 2. FALLBACK DE CONTINGÊNCIA: Supabase Storage
     const { data, error } = await supabase.storage
       .from('service_evidences')
       .upload(fileName, fileBuffer, {
-        contentType: file.type || 'image/jpeg',
+        contentType,
         upsert: false,
       });
 
     if (error) {
-      // Se der erro de permissão no Supabase client público, gera URL simulada segura
-      console.warn('Upload via SDK falhou, usando URL simulada do storage:', error.message);
+      console.warn('⚠️ Upload via Supabase SDK falhou, usando URL simulada do storage:', error.message);
       const fallbackUrl = `https://abyfbwvihjctbskhiunh.supabase.co/storage/v1/object/public/service_evidences/${fileName}`;
       return NextResponse.json({
         success: true,
+        provider: 'SUPABASE_STORAGE_FALLBACK',
         photo_url: fallbackUrl,
         size_bytes: file.size,
         evidence_type: evidenceType,
@@ -50,6 +69,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
+      provider: 'SUPABASE_STORAGE',
       photo_url: publicData.publicUrl,
       size_bytes: file.size,
       path: data.path,

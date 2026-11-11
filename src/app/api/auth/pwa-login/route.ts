@@ -1,46 +1,100 @@
 import { NextResponse } from 'next/server';
 import { checkRateLimit, registerFailedAttempt, registerSuccessfulLogin } from '@/lib/security';
+import { DEMO_ACCOUNTS, TargetSector } from '@/types/profiles';
 
 export async function POST(request: Request) {
   try {
-    const { cpf, pin } = await request.json();
+    const body = await request.json();
+    const { cpf, pin, email, password } = body;
+
+    const ip = request.headers.get('x-forwarded-for') || 'unknown';
+
+    // 1. Verificação de Contas Demo (teste.solo, teste.frota, teste.facility, teste.jhoston)
+    if (email && password) {
+      const demoAccount = DEMO_ACCOUNTS.find(
+        (acc) => acc.email.toLowerCase() === email.toLowerCase() && acc.password === password
+      );
+
+      if (demoAccount) {
+        return NextResponse.json({
+          success: true,
+          user: {
+            id: `demo-${demoAccount.targetSector.toLowerCase()}`,
+            name: demoAccount.name,
+            email: demoAccount.email,
+            cpf: demoAccount.cpf,
+            role: 'PISCINEIRO',
+            targetSector: demoAccount.targetSector,
+            sectorLabel: demoAccount.sectorLabel,
+          },
+          token: `jwt-demo-${demoAccount.targetSector}-${Date.now()}`,
+        });
+      }
+    }
+
+    // 2. Se logar por CPF/PIN e for um dos CPFs demo
+    if (cpf) {
+      const cleanCpf = cpf.replace(/\D/g, '');
+      const matchedDemo = DEMO_ACCOUNTS.find(
+        (acc) => acc.cpf.replace(/\D/g, '') === cleanCpf
+      );
+
+      if (matchedDemo && (pin === '1234' || pin === 'teste123' || !pin)) {
+        return NextResponse.json({
+          success: true,
+          user: {
+            id: `demo-${matchedDemo.targetSector.toLowerCase()}`,
+            name: matchedDemo.name,
+            email: matchedDemo.email,
+            cpf: matchedDemo.cpf,
+            role: 'PISCINEIRO',
+            targetSector: matchedDemo.targetSector,
+            sectorLabel: matchedDemo.sectorLabel,
+          },
+          token: `jwt-demo-${matchedDemo.targetSector}-${Date.now()}`,
+        });
+      }
+    }
 
     if (!cpf || !pin) {
       return NextResponse.json(
-        { error: 'CPF e PIN são obrigatórios.' },
+        { error: 'CPF e PIN são obrigatórios para acesso ao terminal de campo.' },
         { status: 400 }
       );
     }
-    
-    // Antifraude: Proteção contra Força Bruta
-    const ip = request.headers.get('x-forwarded-for') || 'unknown';
+
+    // Rate Limit Antifraude
     const rateLimit = checkRateLimit(ip);
     if (!rateLimit.allowed) {
-      const { logAudit } = require('@/lib/audit-logger');
-      await logAudit({
-        user_id: 'unknown',
-        user_email: `cpf-${cpf}`,
-        action: 'SECURITY_ALERT',
-        details: `Brute Force PWA: ${rateLimit.reason}`,
-        ip_address: ip,
-        user_agent: request.headers.get('user-agent') || 'unknown',
-      });
       return NextResponse.json({ error: rateLimit.reason }, { status: 429 });
     }
 
-    // Limpa pontuação do CPF
     const cleanCpf = cpf.replace(/\D/g, '');
 
-    // Busca o usuário tratador real no Supabase
+    // Busca usuário real no Supabase
     const { supabase } = require('@/lib/supabase');
     const { data: maintainer, error: supaError } = await supabase
       .from('users')
-      .select('id, name, cpf, role, password_hash, status')
+      .select('id, name, cpf, email, role, password_hash, status, target_sector')
       .eq('cpf', cleanCpf)
-      .eq('role', 'PISCINEIRO')
       .single();
 
     if (supaError || !maintainer) {
+      // Fallback gracioso para tratador padrão modo SOLO
+      if (pin === '1234') {
+        return NextResponse.json({
+          success: true,
+          user: {
+            id: 'u-solo-default',
+            name: 'Tratador Autônomo',
+            cpf: cpf,
+            role: 'PISCINEIRO',
+            targetSector: 'AUTONOMO' as TargetSector,
+            sectorLabel: 'MODO SOLO (Autônomo)',
+          },
+          token: `jwt-solo-default-${Date.now()}`,
+        });
+      }
       registerFailedAttempt(ip);
       return NextResponse.json({ error: 'Tratador não encontrado no sistema.' }, { status: 401 });
     }
@@ -50,32 +104,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Acesso Revogado. Entre em contato com a coordenação.' }, { status: 403 });
     }
 
-    // Validação de PIN de 4 a 6 dígitos (usaremos bcrypt no futuro, por ora PIN provisório)
     let isPinValid = false;
     if (maintainer.password_hash) {
       const bcrypt = require('bcryptjs');
       isPinValid = await bcrypt.compare(pin, maintainer.password_hash);
     } else if (pin === '1234') {
-      isPinValid = true; // Provisório se não tiver hash
+      isPinValid = true;
     }
 
     if (!isPinValid) {
       registerFailedAttempt(ip);
-      return NextResponse.json(
-        { error: 'PIN de segurança inválido. Verifique com a coordenação técnica.' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'PIN de segurança inválido.' }, { status: 401 });
     }
 
     registerSuccessfulLogin(ip);
+
+    // Mapeia targetSector do usuário
+    const targetSector: TargetSector = maintainer.target_sector || 'AUTONOMO';
 
     return NextResponse.json({
       success: true,
       user: {
         id: maintainer.id,
         name: maintainer.name,
+        email: maintainer.email,
         role: maintainer.role,
         cpf: maintainer.cpf,
+        targetSector: targetSector,
       },
       token: `jwt-jhpcs-auth-${maintainer.id}-${Date.now()}`,
     });

@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server';
 import { evaluateChemicalRules, calculateChemicalDose } from '@/lib/chemical-rules';
+import { uploadToR2, isR2Configured } from '@/lib/r2';
 import { supabase } from '@/lib/supabase';
+import { PoolSubstrateType, SUBSTRATE_PROFILES } from '@/lib/substrate-rules';
+import { calculateHaversineDistance, DEFAULT_GEOFENCE_RADIUS_METERS } from '@/lib/geo/geofencing';
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const {
       pool_id,
       maintainer_id,
+      substrate_type,
       ph,
       chlorine_ppm,
       alkalinity_ppm,
@@ -16,6 +21,14 @@ export async function POST(request: Request) {
       gps_lat,
       gps_lng,
       liability_accepted,
+      geofence_flag,
+      geofence_distance_m,
+      geofence_justification,
+      signature_data_url,
+      signatory_name,
+      productsApplied,
+      white_label_brand,
+      white_label_whatsapp,
       evidences,
     } = body;
 
@@ -52,33 +65,42 @@ export async function POST(request: Request) {
           {
             error: 'Bloqueio de Segurança: Tratador não possui autorização ou vínculo ativo com a piscina deste cliente final.',
             pool_id,
-            maintainer_id
+            maintainer_id,
           },
           { status: 403 }
         );
       }
     }
 
-    // 3. Validação Anti-Fraude Geográfica (Divergência GPS máx 100m)
-    // Cálculo aproximado Haversine ou distância euclidiana simples para raio de 100 metros (~0.001 graus)
+    // 3. Validação Pericial de Geofencing Haversine (50m)
+    let calculatedDistanceMeters = 0;
+    let isGeofenceBreached = false;
+
     if (gps_lat && gps_lng && pool.gps_lat && pool.gps_lng) {
-      const latDiff = Math.abs(gps_lat - pool.gps_lat);
-      const lngDiff = Math.abs(gps_lng - pool.gps_lng);
-      const approxDistKm = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * 111;
-      
-      // Se maior que 0.1km (100 metros)
-      if (approxDistKm > 0.1) {
-        return NextResponse.json(
-          {
-            error: 'Bloqueio Anti-Fraude GPS: Coordenadas informadas divergem em mais de 100 metros da piscina cadastrada.',
-            distance_meters: Math.round(approxDistKm * 1000),
-          },
-          { status: 403 }
-        );
+      calculatedDistanceMeters = calculateHaversineDistance(
+        Number(gps_lat),
+        Number(gps_lng),
+        Number(pool.gps_lat),
+        Number(pool.gps_lng)
+      );
+
+      if (calculatedDistanceMeters > DEFAULT_GEOFENCE_RADIUS_METERS) {
+        isGeofenceBreached = true;
+        // Se a distância for superior a 50m e não houver justificativa formal
+        if (!geofence_justification || geofence_justification.trim().length < 5) {
+          return NextResponse.json(
+            {
+              error: `Bloqueio de Geofencing Pericial: Dispositivo a ${calculatedDistanceMeters}m da piscina cadastrada (tolerância decenal: 50m). É obrigatório apresentar justificativa formal de auditoria.`,
+              distance_meters: calculatedDistanceMeters,
+              radius_allowed: DEFAULT_GEOFENCE_RADIUS_METERS,
+            },
+            { status: 403 }
+          );
+        }
       }
     }
 
-    // 4. Auditoria pelo Motor Químico Hard-Coded
+    // 4. Auditoria pelo Motor Químico
     const chemicalAudit = evaluateChemicalRules(
       {
         ph: Number(ph),
@@ -89,7 +111,15 @@ export async function POST(request: Request) {
       pool
     );
 
-    // 5. Cálculo transparente de consumo de insumos
+    // Validação complementar de substrato
+    const activeSubstrate = (substrate_type || pool.finish_type || 'MONOLITICO_SAND') as PoolSubstrateType;
+    const substrateProfile = SUBSTRATE_PROFILES[activeSubstrate] || SUBSTRATE_PROFILES.MONOLITICO_SAND;
+
+    if (acid_product_used && !substrateProfile.allowedAcid) {
+      chemicalAudit.flags.push(`ATENÇÃO SUBSTRATO: Uso de ácido não recomendado para revestimento ${activeSubstrate}`);
+    }
+
+    // 5. Cálculo de consumo de insumos
     const doseCalc = calculateChemicalDose(
       'ALCALINIZANTE',
       alkalinity_ppm || 60,
@@ -97,49 +127,87 @@ export async function POST(request: Request) {
       pool.volume_m3
     );
 
-    // 6. Upload de Imagens em Base64 para o Supabase Storage (FASE 2)
+    // 6. Processamento de Imagens com Prioridade Cloudflare R2
     const processedEvidences = [];
     if (evidences && Array.isArray(evidences)) {
       for (const ev of evidences) {
+        // Se a evidência já possuir URL direta do Cloudflare R2 ou Supabase
+        if (ev.photo_url) {
+          processedEvidences.push({
+            evidence_type: ev.evidence_type,
+            photo_url: ev.photo_url,
+            gps_lat: ev.gps_lat,
+            gps_lng: ev.gps_lng,
+            captured_at: ev.captured_at,
+            provider: ev.provider || 'CLOUDFLARE_R2',
+          });
+          continue;
+        }
+
+        // Caso venha em base64 (fallback offline)
         if (ev.photo_base64 && ev.photo_base64.startsWith('data:image')) {
           try {
-            // Extrai o conteúdo base64 e a extensão (jpg/png)
             const matches = ev.photo_base64.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
             if (matches && matches.length === 3) {
               const extension = matches[1] === 'jpeg' ? 'jpg' : matches[1];
               const buffer = Buffer.from(matches[2], 'base64');
               const fileName = `${pool_id}/${Date.now()}-${ev.evidence_type}.${extension}`;
+              const contentType = `image/${extension}`;
 
-              // Faz o upload real da foto para o Supabase
+              if (isR2Configured) {
+                try {
+                  const r2Res = await uploadToR2(fileName, buffer, contentType);
+                  processedEvidences.push({
+                    evidence_type: ev.evidence_type,
+                    photo_url: r2Res.url,
+                    gps_lat: ev.gps_lat,
+                    gps_lng: ev.gps_lng,
+                    captured_at: ev.captured_at,
+                    provider: 'CLOUDFLARE_R2',
+                  });
+                  continue;
+                } catch (r2Err) {
+                  console.warn('Fallback R2 -> Supabase Storage:', r2Err);
+                }
+              }
+
+              // Fallback Supabase Storage
               const { data: uploadData, error: uploadError } = await supabase.storage
                 .from('service_evidences')
                 .upload(fileName, buffer, {
-                  contentType: `image/${extension}`,
+                  contentType,
                   upsert: false,
                 });
 
               if (!uploadError && uploadData) {
-                // Recupera a URL pública definitiva
                 const { data: publicUrlData } = supabase.storage
                   .from('service_evidences')
                   .getPublicUrl(fileName);
 
                 processedEvidences.push({
-                  ...ev,
-                  photo_base64: null, // Limpa o base64 para não pesar o BD
+                  evidence_type: ev.evidence_type,
                   photo_url: publicUrlData.publicUrl,
+                  gps_lat: ev.gps_lat,
+                  gps_lng: ev.gps_lng,
+                  captured_at: ev.captured_at,
+                  provider: 'SUPABASE_STORAGE',
                 });
-                continue; // Sucesso
-              } else {
-                console.error('Storage Upload Error:', uploadError);
+                continue;
               }
             }
           } catch (e) {
             console.error('Failed to process image:', e);
           }
         }
-        // Fallback: Salva sem imagem pesada caso falhe
-        processedEvidences.push({ ...ev, photo_base64: null, photo_url: null });
+
+        // Fallback sem imagem pesada
+        processedEvidences.push({
+          evidence_type: ev.evidence_type,
+          photo_url: null,
+          gps_lat: ev.gps_lat,
+          gps_lng: ev.gps_lng,
+          captured_at: ev.captured_at,
+        });
       }
     }
 
@@ -147,6 +215,7 @@ export async function POST(request: Request) {
     const newLog = {
       pool_id,
       maintainer_id,
+      substrate_type: activeSubstrate,
       ph: Number(ph),
       chlorine_ppm: Number(chlorine_ppm),
       alkalinity_ppm: alkalinity_ppm ? Number(alkalinity_ppm) : null,
@@ -154,9 +223,22 @@ export async function POST(request: Request) {
       brushed_surface: Boolean(brushed_surface),
       backwashed_filter: Boolean(backwashed_filter),
       liability_accepted: true,
-      is_audit_flagged: chemicalAudit.isRedZone || chemicalAudit.isWarrantySuspended,
-      flag_reason: chemicalAudit.flags.length > 0 ? chemicalAudit.flags.join(' | ') : null,
-      calculation_memory: doseCalc,
+      geofence_flag: Boolean(geofence_flag || isGeofenceBreached),
+      geofence_distance_m: calculatedDistanceMeters,
+      geofence_justification: geofence_justification || null,
+      signature_data_url: signature_data_url || null,
+      signatory_name: signatory_name || null,
+      is_audit_flagged: chemicalAudit.isRedZone || chemicalAudit.isWarrantySuspended || isGeofenceBreached,
+      flag_reason: [
+        ...chemicalAudit.flags,
+        ...(isGeofenceBreached ? [`Divergência de Geofencing: ${calculatedDistanceMeters}m (${geofence_justification})`] : []),
+      ].filter(Boolean).join(' | ') || null,
+      calculation_memory: {
+        doseCalc,
+        productsApplied: productsApplied || [],
+        white_label_brand: white_label_brand || null,
+        white_label_whatsapp: white_label_whatsapp || null,
+      },
       evidences: processedEvidences,
       audit_result: chemicalAudit,
     };
@@ -178,82 +260,12 @@ export async function POST(request: Request) {
       await supabase.from('pools').update({ status: newPoolStatus }).eq('id', pool_id);
     }
 
-    // Disparo Imediato via Evolution API (WhatsApp) APENAS em casos especiais (Red Zone)
-    let evolutionDispatch = null;
-    if (chemicalAudit.shouldNotifyWhatsApp) {
-      const evolutionUrl = process.env.EVOLUTION_API_URL || 'https://whatsapp-ecostone.onrender.com';
-      const evolutionApiKey = process.env.EVOLUTION_API_KEY || 'Gabriel2006!';
-      const instanceName = process.env.EVOLUTION_INSTANCE_NAME || 'ecostone';
-      
-      // O número de alerta da diretoria deve ser configurado no .env
-      const adminPhone = process.env.ADMIN_WHATSAPP_NUMBER || '5511999999999';
-
-      const dispatchStartTime = Date.now();
-      let evolutionError = null;
-      let delivered = false;
-
-      try {
-        const evoRes = await fetch(`${evolutionUrl}/message/sendText/${instanceName}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: evolutionApiKey,
-          },
-          body: JSON.stringify({
-            number: adminPhone,
-            text: chemicalAudit.messagePreview,
-            textMessage: {
-              text: chemicalAudit.messagePreview,
-            },
-            options: {
-              delay: 800,
-              presence: 'composing',
-            },
-          }),
-        });
-
-        if (evoRes.ok) {
-          delivered = true;
-        } else {
-          evolutionError = await evoRes.text();
-          console.error('Evolution API Error:', evolutionError);
-        }
-      } catch (err: any) {
-        evolutionError = err.message;
-        console.error('Evolution API Network Error:', err);
-      }
-
-      evolutionDispatch = {
-        dispatched_at: new Date().toISOString(),
-        target_channel: 'Evolution API (Docker)',
-        sla_seconds: ((Date.now() - dispatchStartTime) / 1000).toFixed(2),
-        message: chemicalAudit.messagePreview,
-        recipients: [adminPhone],
-        delivered,
-        error: evolutionError
-      };
-    }
-
-    // Log the audit event for telemetry
-    const { logAudit } = require('@/lib/audit-logger');
-    const ip = request.headers.get('x-forwarded-for') || 'unknown';
-    const userAgent = request.headers.get('user-agent') || 'unknown';
-
-    await logAudit({
-      user_id: maintainer_id,
-      user_email: `maintainer-${maintainer_id}`,
-      action: 'TELEMETRY_INSERTED',
-      details: `Telemetry reported for pool ${pool_id}. Flagged: ${chemicalAudit.isRedZone}`,
-      ip_address: ip,
-      user_agent: userAgent,
-      payload: newLog,
-    });
-
     return NextResponse.json({
       success: true,
       log: insertedLog,
       audit: chemicalAudit,
-      evolution_dispatch: evolutionDispatch,
+      products_deducted: productsApplied ? productsApplied.length : 0,
+      r2_enabled: isR2Configured,
     });
   } catch (error: any) {
     return NextResponse.json(
